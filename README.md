@@ -4,6 +4,8 @@
 [Class Widgets 2 SDK](https://github.com/class-widgets/class-widgets-sdk) 编写，
 项目结构参考了 [插件模板 V2](https://github.com/Class-Widgets/plugin-template-v2)。
 
+！此插件由deepseek V4.1 Flash 1017开发
+
 仓库：<https://github.com/Sweet-Potato-t/Butter-Weather-for-CW2>
 
 ![设置页预览](docs/preview-settings.png)
