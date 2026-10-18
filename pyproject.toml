@@ -1,0 +1,19 @@
+[project]
+name = "butter-weather-for-cw2"
+version = "1.0.0"
+description = "Butter Weather for CW2 — a multi-source weather widget plugin for Class Widgets 2."
+authors = [
+    {name = "sweetpotato"},
+]
+readme = "README.md"
+requires-python = ">=3.9"
+# The CW2 runtime injects ClassWidgets.SDK. No third-party runtime dependency is
+# bundled; the weather providers use only the Python standard library.
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["class-widgets-sdk>=0.7.0"]
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
