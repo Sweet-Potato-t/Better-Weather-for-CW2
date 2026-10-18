@@ -71,7 +71,7 @@
 ### 方式一：导入 `.cwplugin`
 
 1. 关闭 Class Widgets 2。
-2. 在“设置 → 插件”中导入 `com.sweetpotato.weather.cwplugin`。
+2. 下载 [com.sweetpotato.weather.cwplugin](release/com.sweetpotato.weather.cwplugin)，然后在“设置 → 插件”中导入。
 3. 重启 Class Widgets 2，在插件列表中启用“Butter Weather”。
 4. 在小组件编辑界面中添加“Butter Weather”小组件。
 
