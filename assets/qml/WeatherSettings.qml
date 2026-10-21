@@ -5,7 +5,7 @@ import RinUI
 
 FluentPage {
     id: root
-    title: "Butter Weather"
+    title: "Better Weather"
 
     // The host passes pluginId when the page is opened.  Keeping a concrete
     // default also makes the page work when it is previewed directly.
@@ -43,6 +43,11 @@ FluentPage {
         return ""
     }
 
+    function openAlertDetail(data) {
+        alertDialog.alertData = data || ({})
+        alertDialog.open()
+    }
+
     function syncControls() {
         if (!backend)
             return
@@ -59,6 +64,11 @@ FluentPage {
         animationSwitch.checked = cfg.animation_enabled !== false
         showLocationSwitch.checked = cfg.show_location !== false
         showProviderSwitch.checked = cfg.show_provider === true
+        widgetContentCombo.currentIndex = cfg.widget_content_mode === "high_low" ? 1 : 0
+        widgetHourlySwitch.checked = cfg.widget_show_hourly !== false
+        widgetPrecipSwitch.checked = cfg.widget_show_precip !== false
+        widgetCarouselSwitch.checked = cfg.widget_carousel !== false
+        widgetSecondsSpin.value = Number(cfg.widget_main_seconds || 8)
         if (!qweatherKeyField.activeFocus) qweatherKeyField.text = cfg.qweather_api_key || ""
         if (!qweatherHostField.activeFocus) qweatherHostField.text = cfg.qweather_host || "devapi.qweather.com"
         if (!owmKeyField.activeFocus) owmKeyField.text = cfg.openweathermap_api_key || ""
@@ -414,10 +424,7 @@ FluentPage {
                 }
 
                 TapHandler {
-                    onTapped: {
-                        alertDialog.alertData = modelData
-                        alertDialog.open()
-                    }
+                    onTapped: root.openAlertDetail(modelData)
                 }
             }
         }
@@ -717,11 +724,72 @@ FluentPage {
     SettingExpander {
         Layout.fillWidth: true
         title: "小组件显示"
-        description: "预警出现时，小组件会淡出当前天气并循环显示预警；一次只显示一条。"
+        description: "统一控制所有 Better Weather 小组件的内容、轮播和预警显示。"
+
+        SettingItem {
+            title: "主屏显示"
+            description: "所有 Better Weather 小组件共用；选择实时温度或当日最高 / 最低温。"
+
+            ComboBox {
+                id: widgetContentCombo
+                Layout.preferredWidth: 170
+                model: ["实时温度", "最高 / 最低温"]
+                onActivated: if (backend)
+                    backend.setOption("widget_content_mode", index === 1 ? "high_low" : "current")
+            }
+        }
+
+        SettingItem {
+            title: "未来 3 小时"
+            description: "在小组件轮播中加入逐小时预报屏幕；数据源没有逐小时数据时不显示。"
+
+            Switch {
+                id: widgetHourlySwitch
+                onToggled: if (!root.syncing && backend)
+                    backend.setOption("widget_show_hourly", checked)
+            }
+        }
+
+        SettingItem {
+            title: "降水提醒"
+            description: "未来 3 小时降水概率较高时，加入降水提醒屏幕。"
+
+            Switch {
+                id: widgetPrecipSwitch
+                onToggled: if (!root.syncing && backend)
+                    backend.setOption("widget_show_precip", checked)
+            }
+        }
+
+        SettingItem {
+            title: "内容屏幕轮播"
+            description: "开启后主屏、未来 3 小时、降水提醒和天气预警一起轮播；关闭后只显示主屏（有预警时仅轮播预警）。"
+
+            Switch {
+                id: widgetCarouselSwitch
+                onToggled: if (!root.syncing && backend)
+                    backend.setOption("widget_carousel", checked)
+            }
+        }
+
+        SettingItem {
+            title: "主屏停留时长"
+            description: "单位：秒。主屏与小时预报、降水提醒之间切换的间隔。"
+
+            SpinBox {
+                id: widgetSecondsSpin
+                Layout.preferredWidth: 150
+                from: 3
+                to: 60
+                editable: true
+                onValueModified: if (!root.syncing && backend)
+                    backend.setOption("widget_main_seconds", value)
+            }
+        }
 
         SettingItem {
             title: "切换动画"
-            description: "在天气与预警、以及多条预警之间使用淡入淡出过渡。"
+            description: "在主屏、小时预报、降水提醒与预警之间使用淡入淡出过渡。"
 
             Switch {
                 id: animationSwitch
@@ -822,7 +890,7 @@ FluentPage {
         height: Math.min(
             520,
             Overlay.overlay ? Overlay.overlay.height - 80 : 520,
-            Math.max(300, alertColumn.implicitHeight + 170)
+            Math.max(300, alertContent.implicitHeight + 130)
         )
         standardButtons: Dialog.Close
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
@@ -841,16 +909,16 @@ FluentPage {
             implicitWidth: 560
             implicitHeight: 430
             contentWidth: width
-            contentHeight: alertColumn.implicitHeight
+            contentHeight: alertContent.height
             boundsBehavior: Flickable.StopAtBounds
 
-            ColumnLayout {
-                id: alertColumn
+            Column {
+                id: alertContent
                 width: alertFlick.width
                 spacing: 12
 
                 RowLayout {
-                    Layout.fillWidth: true
+                    width: parent.width
                     spacing: 12
 
                     Rectangle {
@@ -878,6 +946,7 @@ FluentPage {
                             font.pixelSize: 18
                             font.weight: 650
                             wrapMode: Text.WordWrap
+                            textFormat: Text.PlainText
                         }
                         Text {
                             Layout.fillWidth: true
@@ -885,31 +954,32 @@ FluentPage {
                             text: alertDialog.alertData.level_text || ""
                             font.pixelSize: 13
                             font.weight: 600
+                            textFormat: Text.PlainText
                         }
                     }
                 }
 
                 Rectangle {
-                    Layout.fillWidth: true
+                    width: parent.width
                     height: 1
                     color: Colors.proxy.dividerStrokeColor || "#22000000"
                 }
 
                 Text {
-                    Layout.fillWidth: true
+                    width: parent.width
                     text: alertDialog.alertData.description || "该预警没有提供详细说明。"
                     wrapMode: Text.WordWrap
+                    textFormat: Text.PlainText
                     font.pixelSize: 13
                     lineHeight: 1.45
+                    lineHeightMode: Text.ProportionalHeight
                 }
 
-                GridLayout {
-                    Layout.fillWidth: true
-                    columns: 2
-                    columnSpacing: 18
-                    rowSpacing: 8
-
+                RowLayout {
+                    width: parent.width
+                    spacing: 12
                     Text {
+                        Layout.preferredWidth: 78
                         color: Colors.proxy.textSecondaryColor
                         text: "发布单位"
                         font.pixelSize: 12
@@ -919,8 +989,15 @@ FluentPage {
                         text: alertDialog.alertData.sender || "—"
                         font.pixelSize: 12
                         wrapMode: Text.WordWrap
+                        textFormat: Text.PlainText
                     }
+                }
+
+                RowLayout {
+                    width: parent.width
+                    spacing: 12
                     Text {
+                        Layout.preferredWidth: 78
                         color: Colors.proxy.textSecondaryColor
                         text: "发布时间"
                         font.pixelSize: 12
@@ -930,8 +1007,15 @@ FluentPage {
                         text: alertDialog.alertData.pub_time || "—"
                         font.pixelSize: 12
                         wrapMode: Text.WordWrap
+                        textFormat: Text.PlainText
                     }
+                }
+
+                RowLayout {
+                    width: parent.width
+                    spacing: 12
                     Text {
+                        Layout.preferredWidth: 78
                         color: Colors.proxy.textSecondaryColor
                         text: "生效时间"
                         font.pixelSize: 12
@@ -942,8 +1026,15 @@ FluentPage {
                             + "  →  " + (alertDialog.alertData.end_time || "—")
                         font.pixelSize: 12
                         wrapMode: Text.WordWrap
+                        textFormat: Text.PlainText
                     }
+                }
+
+                RowLayout {
+                    width: parent.width
+                    spacing: 12
                     Text {
+                        Layout.preferredWidth: 78
                         color: Colors.proxy.textSecondaryColor
                         text: "数据来源"
                         font.pixelSize: 12
@@ -953,6 +1044,7 @@ FluentPage {
                         text: alertDialog.alertData.source_name
                             || alertDialog.alertData.source || "—"
                         font.pixelSize: 12
+                        textFormat: Text.PlainText
                     }
                 }
             }

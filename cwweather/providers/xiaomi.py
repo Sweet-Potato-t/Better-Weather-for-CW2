@@ -11,7 +11,7 @@ from __future__ import annotations
 from typing import Any, Dict, List
 
 from ..mappings import xiaomi_info
-from ..models import DailyForecast, Location, WeatherSnapshot
+from ..models import DailyForecast, HourlyForecast, Location, WeatherSnapshot
 from ..util import ProviderError, as_float, as_int, first
 from .base import WeatherProvider
 
@@ -66,6 +66,7 @@ class XiaomiProvider(WeatherProvider):
             if not location.city and city_name != location.district:
                 location.city = city_name
 
+        hourly = self._hourly((payload or {}).get("forecastHourly") or {})
         alerts = self._alerts(
             (payload or {}).get("alerts")
             or (payload or {}).get("alert")
@@ -98,6 +99,7 @@ class XiaomiProvider(WeatherProvider):
             sunrise=str(first_sun.get("from") or ""),
             sunset=str(first_sun.get("to") or ""),
             daily=daily,
+            hourly=hourly,
             alerts=alerts,
         )
 
@@ -123,6 +125,28 @@ class XiaomiProvider(WeatherProvider):
         if not key.startswith("weathercn:"):
             key = "weathercn:" + key
         return key, str(item.get("name") or "")
+
+    def _hourly(self, hourly_raw: Dict[str, Any]) -> List[HourlyForecast]:
+        temperature = hourly_raw.get("temperature") or {}
+        weather = hourly_raw.get("weather") or {}
+        temps = list(temperature.get("value") or [])
+        codes = list(weather.get("value") or [])
+        start = str(temperature.get("pubTime") or weather.get("pubTime") or "")
+        result: List[HourlyForecast] = []
+        for index, value in enumerate(temps[:4]):
+            code = codes[index] if index < len(codes) else ""
+            stamp = _add_hours(start, index)
+            is_day = _is_daytime(stamp)
+            icon, text = xiaomi_info(code, is_day)
+            result.append(
+                HourlyForecast(
+                    time=stamp,
+                    temp_c=as_float(value),
+                    icon=icon,
+                    text=text,
+                )
+            )
+        return result
 
     def _daily(self, daily_raw: Dict[str, Any]) -> List[DailyForecast]:
         temperatures = ((daily_raw.get("temperature") or {}).get("value") or [])
@@ -182,6 +206,16 @@ class XiaomiProvider(WeatherProvider):
         from ..models import normalize_alerts
 
         return normalize_alerts(raw, source)
+
+
+def _add_hours(value: str, hours: int) -> str:
+    from datetime import datetime, timedelta
+    from ..util import parse_datetime
+
+    parsed = parse_datetime(value)
+    if parsed is None:
+        return ""
+    return (parsed + timedelta(hours=hours)).isoformat()
 
 
 def _date_from_index(index: int) -> str:

@@ -42,6 +42,11 @@ class WeatherConfig(ConfigBaseModel):
     # Widget presentation
     show_location: bool = True
     show_provider: bool = False
+    widget_content_mode: str = "current"   # current | high_low
+    widget_show_hourly: bool = True
+    widget_show_precip: bool = True
+    widget_carousel: bool = True
+    widget_main_seconds: int = 8
 
     # Keys for providers that need one
     qweather_api_key: str = ""

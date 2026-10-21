@@ -1,12 +1,12 @@
 {
   "id": "com.sweetpotato.weather",
-  "name": "Butter Weather",
-  "version": "1.0.0",
+  "name": "Better Weather",
+  "version": "1.1.5",
   "api_version": ">=0.4.2,<0.8",
   "entry": "main.py",
   "author": "sweetpotato",
-  "description": "Butter Weather for CW2 — 多数据源天气小组件：和风天气、小米天气、Open-Meteo、wttr.in、MET Norway、OpenWeatherMap、WeatherAPI、彩云天气；支持预警轮播、自动定位和完整设置页。",
-  "url": "https://github.com/Sweet-Potato-t/Butter-Weather-for-CW2",
+  "description": "Better Weather for CW2 — 多数据源天气小组件：和风天气、小米天气、Open-Meteo、wttr.in、MET Norway、OpenWeatherMap、WeatherAPI、彩云天气；支持预警轮播、自动定位和完整设置页。",
+  "url": "https://github.com/Sweet-Potato-t/Better-Weather-for-CW2",
   "readme": "README.md",
   "icon": "icon.png"
 }

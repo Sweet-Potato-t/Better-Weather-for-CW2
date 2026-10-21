@@ -145,6 +145,28 @@ class DailyForecast:
 
 
 @dataclass
+class HourlyForecast:
+    time: str
+    temp_c: Optional[float] = None
+    icon: str = "unknown"
+    text: str = ""
+    pop: Optional[int] = None
+
+    def to_dict(self, unit: str = "celsius") -> Dict[str, Any]:
+        from .formatting import convert_temp, temp_text
+
+        return {
+            "time": self.time,
+            "hour": short_time(self.time) or self.time,
+            "temp": convert_temp(self.temp_c, unit),
+            "temp_text": temp_text(self.temp_c, unit),
+            "icon": self.icon,
+            "text": self.text,
+            "pop": self.pop,
+        }
+
+
+@dataclass
 class WeatherSnapshot:
     provider_id: str
     provider_name: str
@@ -168,6 +190,7 @@ class WeatherSnapshot:
     sunrise: str = ""
     sunset: str = ""
     daily: List[DailyForecast] = field(default_factory=list)
+    hourly: List[HourlyForecast] = field(default_factory=list)
     alerts: List[Alert] = field(default_factory=list)
     fetched_at: str = field(default_factory=iso_now)
     fallback_used: bool = False
@@ -238,6 +261,7 @@ class WeatherSnapshot:
                 "sunset": short_time(self.sunset),
             },
             "daily": daily_payload,
+            "hourly": [item.to_dict(unit) for item in self.hourly[:4] if item.time],
             "alerts": [alert.to_dict() for alert in self.alerts],
             "alert_count": len(self.alerts),
             "unit": unit_symbol(unit),

@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any, Dict, List
 
 from ..mappings import owm_icon
-from ..models import DailyForecast, Location, WeatherSnapshot
+from ..models import DailyForecast, HourlyForecast, Location, WeatherSnapshot
 from ..util import ProviderError, as_float, as_int, first
 from .base import WeatherProvider
 
@@ -30,7 +30,7 @@ class OpenWeatherMapProvider(WeatherProvider):
                 "appid": key,
                 "units": "metric",
                 "lang": "zh_cn",
-                "exclude": "minutely,hourly",
+                "exclude": "minutely",
             },
         )
         current = (payload or {}).get("current") or {}
@@ -64,6 +64,7 @@ class OpenWeatherMapProvider(WeatherProvider):
                 )
             )
 
+        hourly = self._hourly((payload or {}).get("hourly") or [])
         alerts = self._alerts((payload or {}).get("alerts") or [], self.id)
         first_day = first(daily_raw) or {}
         temp_info = first_day.get("temp") or {}
@@ -97,8 +98,31 @@ class OpenWeatherMapProvider(WeatherProvider):
             sunrise=_iso(current.get("sunrise")),
             sunset=_iso(current.get("sunset")),
             daily=daily,
+            hourly=hourly,
             alerts=alerts,
         )
+
+    def _hourly(self, raw: list) -> List[HourlyForecast]:
+        result: List[HourlyForecast] = []
+        for item in raw[:4]:
+            if not isinstance(item, dict):
+                continue
+            weather = first(item.get("weather")) or {}
+            icon_code = str(weather.get("icon") or "")
+            is_day = not icon_code.endswith("n")
+            icon, text = owm_icon(
+                weather.get("id"), str(weather.get("description") or ""), is_day
+            )
+            result.append(
+                HourlyForecast(
+                    time=_iso(item.get("dt")),
+                    temp_c=as_float(item.get("temp")),
+                    icon=icon,
+                    text=text,
+                    pop=as_int(as_float(item.get("pop")) * 100) if item.get("pop") is not None else None,
+                )
+            )
+        return result
 
     def _alerts(self, raw: list, source: str) -> list:
         normalized = []

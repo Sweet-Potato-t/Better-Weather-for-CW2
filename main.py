@@ -1,4 +1,4 @@
-"""Butter Weather for CW2.
+"""Better Weather for CW2.
 
 The Qt-facing layer is deliberately thin: network calls and provider fallback
 run in a daemon thread, and QML receives immutable dictionaries through queued
@@ -31,15 +31,17 @@ except Exception:  # pragma: no cover - CW2 always ships loguru
 
 PLUGIN_ID = "com.sweetpotato.weather"
 WIDGET_ID = "com.sweetpotato.weather.widget"
-
 _BOOL_FIELDS = {
     "animation_enabled",
     "fallback_enabled",
     "auto_location",
     "show_location",
     "show_provider",
+    "widget_show_hourly",
+    "widget_show_precip",
+    "widget_carousel",
 }
-_INT_FIELDS = {"refresh_interval", "cycle_interval", "timeout"}
+_INT_FIELDS = {"refresh_interval", "cycle_interval", "timeout", "widget_main_seconds"}
 _FLOAT_FIELDS = {"manual_lat", "manual_lon"}
 _STRING_FIELDS = {
     "source",
@@ -49,6 +51,7 @@ _STRING_FIELDS = {
     "manual_country",
     "manual_timezone",
     "temperature_unit",
+    "widget_content_mode",
     "qweather_api_key",
     "qweather_host",
     "openweathermap_api_key",
@@ -134,10 +137,9 @@ class Plugin(CW2Plugin):
         try:
             self.api.widgets.register(
                 widget_id=WIDGET_ID,
-                name="Butter Weather",
+                name="Better Weather",
                 qml_path=self.PATH / "assets" / "qml" / "WeatherWidget.qml",
                 backend_obj=self,
-                default_settings={},
             )
         except Exception:
             logger.exception("Failed to register weather widget")
@@ -145,7 +147,7 @@ class Plugin(CW2Plugin):
         try:
             self.api.ui.register_settings_page(
                 qml_path=self.PATH / "assets" / "qml" / "WeatherSettings.qml",
-                title="Butter Weather",
+                title="Better Weather",
                 icon="ic_fluent_weather_sunny_20_regular",
             )
         except Exception:
@@ -390,6 +392,7 @@ class Plugin(CW2Plugin):
                 "sunset": "",
             },
             "daily": [],
+            "hourly": [],
             "alerts": [],
             "alert_count": 0,
             "unit": unit_symbol(str(getattr(self.config, "temperature_unit", "celsius"))),
@@ -498,6 +501,8 @@ class Plugin(CW2Plugin):
                 return max(1, min(300, number))
             if key == "timeout":
                 return max(5, min(45, number))
+            if key == "widget_main_seconds":
+                return max(3, min(60, number))
             return number
         if key in _FLOAT_FIELDS:
             try:
@@ -522,7 +527,11 @@ class Plugin(CW2Plugin):
         return text
 
     def _after_config_change(self, key: str) -> None:
-        if key in ("cycle_interval", "animation_enabled", "show_location", "show_provider"):
+        if key in (
+            "cycle_interval", "animation_enabled", "show_location", "show_provider",
+            "widget_content_mode", "widget_show_hourly", "widget_show_precip",
+            "widget_carousel", "widget_main_seconds",
+        ):
             return
         if key == "temperature_unit":
             if self._last_snapshot is not None:

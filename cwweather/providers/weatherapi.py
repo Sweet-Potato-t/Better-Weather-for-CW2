@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any, Dict, List
 
 from ..mappings import weatherapi_info
-from ..models import DailyForecast, Location, WeatherSnapshot
+from ..models import DailyForecast, HourlyForecast, Location, WeatherSnapshot
 from ..util import ProviderError, as_float, as_int, first
 from .base import WeatherProvider
 
@@ -65,6 +65,7 @@ class WeatherApiProvider(WeatherProvider):
                 )
             )
 
+        hourly = self._hourly(first(forecast_raw) or {}, str(current.get("last_updated") or ""))
         first_day = first(forecast_raw) or {}
         astro = first_day.get("astro") or {}
         first_day_data = first_day.get("day") or {}
@@ -94,8 +95,37 @@ class WeatherApiProvider(WeatherProvider):
             sunrise=str(astro.get("sunrise") or ""),
             sunset=str(astro.get("sunset") or ""),
             daily=daily,
+            hourly=hourly,
             alerts=alerts,
         )
+
+    @staticmethod
+    def _hourly(day: Dict[str, Any], current_time: str) -> List[HourlyForecast]:
+        hours = day.get("hour") or []
+        result: List[HourlyForecast] = []
+        for item in hours:
+            if not isinstance(item, dict):
+                continue
+            stamp = str(item.get("time") or "")
+            if current_time and stamp and stamp < current_time:
+                continue
+            condition = item.get("condition") or {}
+            is_day = bool(as_int(item.get("is_day"), 1))
+            icon, text = weatherapi_info(
+                condition.get("code"), str(condition.get("text") or ""), is_day
+            )
+            result.append(
+                HourlyForecast(
+                    time=stamp,
+                    temp_c=as_float(item.get("temp_c")),
+                    icon=icon,
+                    text=text,
+                    pop=as_int(item.get("chance_of_rain")),
+                )
+            )
+            if len(result) >= 4:
+                break
+        return result
 
     @staticmethod
     def _wind_scale(kmh: float | None) -> str:

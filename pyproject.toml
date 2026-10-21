@@ -1,7 +1,7 @@
 [project]
-name = "butter-weather-for-cw2"
-version = "1.0.0"
-description = "Butter Weather for CW2 — a multi-source weather widget plugin for Class Widgets 2."
+name = "better-weather-for-cw2"
+version = "1.1.5"
+description = "Better Weather for CW2 — a multi-source weather widget plugin for Class Widgets 2."
 authors = [
     {name = "sweetpotato"},
 ]

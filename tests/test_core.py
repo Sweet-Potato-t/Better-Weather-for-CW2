@@ -17,7 +17,7 @@ from cwweather.mappings import (
     wmo_info,
     xiaomi_info,
 )
-from cwweather.models import Alert, DailyForecast, Location, WeatherSnapshot, normalize_alerts
+from cwweather.models import Alert, DailyForecast, HourlyForecast, Location, WeatherSnapshot, normalize_alerts
 from cwweather.providers.open_meteo import OpenMeteoProvider
 from cwweather.providers.xiaomi import XiaomiProvider
 from cwweather.service import WeatherService
@@ -89,6 +89,7 @@ class ModelTests(unittest.TestCase):
             high_c=25,
             low_c=12,
             daily=[DailyForecast("2026-10-18", 25, 12, "晴", "sunny_day", True)],
+            hourly=[HourlyForecast("2026-10-18T19:00", 20, "rain", "小雨", 60)],
             alerts=[
                 Alert(
                     id="1",
@@ -105,6 +106,8 @@ class ModelTests(unittest.TestCase):
         payload = snapshot.to_payload("fahrenheit")
         self.assertEqual(payload["current"]["temp"], 68)
         self.assertEqual(payload["today"]["high"], 77)
+        self.assertEqual(payload["hourly"][0]["hour"], "19:00")
+        self.assertEqual(payload["hourly"][0]["temp"], 68)
         self.assertEqual(payload["alert_count"], 1)
         self.assertEqual(payload["alerts"][0]["source_name"], "和风天气")
         self.assertEqual(payload["current"]["text"], "晴")
@@ -145,6 +148,13 @@ class OpenMeteoParserTests(unittest.TestCase):
                 "sunrise": ["2026-10-18T06:27", "2026-10-19T06:28"],
                 "sunset": ["2026-10-18T17:31", "2026-10-19T17:30"],
             },
+            "hourly": {
+                "time": ["2026-10-18T18:00", "2026-10-18T19:00", "2026-10-18T20:00"],
+                "temperature_2m": [18.0, 17.0, 16.0],
+                "weather_code": [2, 61, 61],
+                "is_day": [1, 0, 0],
+                "precipitation_probability": [10, 50, 60],
+            },
         }
 
         class Provider(OpenMeteoProvider):
@@ -157,6 +167,9 @@ class OpenMeteoParserTests(unittest.TestCase):
         self.assertEqual(snapshot.high_c, 22.2)
         self.assertEqual(snapshot.low_c, 11.1)
         self.assertEqual(len(snapshot.daily), 2)
+        self.assertEqual(len(snapshot.hourly), 3)
+        self.assertEqual(snapshot.hourly[0].icon, "partly_cloudy_day")
+        self.assertEqual(snapshot.hourly[1].pop, 50)
         self.assertEqual(snapshot.location.timezone, "Asia/Shanghai")
 
 

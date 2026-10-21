@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any, Dict, List
 
 from ..mappings import wmo_icon, wmo_info
-from ..models import DailyForecast, Location, WeatherSnapshot
+from ..models import DailyForecast, HourlyForecast, Location, WeatherSnapshot
 from ..util import ProviderError, as_float, as_int
 from .base import WeatherProvider
 
@@ -32,6 +32,9 @@ class OpenMeteoProvider(WeatherProvider):
                     "weather_code,temperature_2m_max,temperature_2m_min,"
                     "sunrise,sunset,precipitation_sum,precipitation_probability_max,"
                     "wind_speed_10m_max"
+                ),
+                "hourly": (
+                    "temperature_2m,weather_code,is_day,precipitation_probability"
                 ),
                 "timezone": "auto",
                 "forecast_days": 4,
@@ -72,6 +75,7 @@ class OpenMeteoProvider(WeatherProvider):
                 )
             )
 
+        hourly = _parse_hourly((payload or {}).get("hourly") or {}, str(current.get("time") or ""))
         high = forecasts[0].high_c if forecasts else None
         low = forecasts[0].low_c if forecasts else None
         timezone = str((payload or {}).get("timezone") or "")
@@ -100,6 +104,7 @@ class OpenMeteoProvider(WeatherProvider):
             sunrise=str(sunrises[0]) if sunrises else "",
             sunset=str(sunsets[0]) if sunsets else "",
             daily=forecasts,
+            hourly=hourly,
             alerts=[],
         )
 
@@ -110,3 +115,33 @@ def _wind_direction(degrees: float | None) -> str:
     labels = ("北风", "东北风", "东风", "东南风", "南风", "西南风", "西风", "西北风")
     index = int((degrees % 360) / 45.0 + 0.5) % 8
     return labels[index]
+
+
+def _parse_hourly(hourly: Dict[str, Any], current_time: str) -> List[HourlyForecast]:
+    times = list(hourly.get("time") or [])
+    temps = list(hourly.get("temperature_2m") or [])
+    codes = list(hourly.get("weather_code") or [])
+    days = list(hourly.get("is_day") or [])
+    pops = list(hourly.get("precipitation_probability") or [])
+    result: List[HourlyForecast] = []
+    for index, stamp in enumerate(times):
+        if current_time and str(stamp) < current_time:
+            continue
+        if index >= len(temps):
+            break
+        code = codes[index] if index < len(codes) else None
+        is_day = bool(as_int(days[index] if index < len(days) else 1, 1))
+        hourly_icon = wmo_icon(code, is_day)
+        _, hourly_text = wmo_info(code)
+        result.append(
+            HourlyForecast(
+                time=str(stamp),
+                temp_c=as_float(temps[index]),
+                icon=hourly_icon,
+                text=hourly_text,
+                pop=as_int(pops[index]) if index < len(pops) else None,
+            )
+        )
+        if len(result) >= 4:
+            break
+    return result

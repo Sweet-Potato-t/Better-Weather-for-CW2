@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from ..mappings import metno_info
-from ..models import DailyForecast, Location, WeatherSnapshot
+from ..models import DailyForecast, HourlyForecast, Location, WeatherSnapshot
 from ..util import ProviderError, as_float, as_int, parse_datetime
 from .base import WeatherProvider
 
@@ -77,6 +77,7 @@ class MetNoProvider(WeatherProvider):
                 )
             )
 
+        hourly = self._hourly(series, timezone_name)
         alerts = self._fetch_alerts(location, config)
 
         return WeatherSnapshot(
@@ -105,8 +106,37 @@ class MetNoProvider(WeatherProvider):
             sunrise="",
             sunset="",
             daily=daily,
+            hourly=hourly,
             alerts=alerts,
         )
+
+    @staticmethod
+    def _hourly(series: list, timezone_name: str = "") -> List[HourlyForecast]:
+        zone = _zone(timezone_name or "UTC")
+        result: List[HourlyForecast] = []
+        for entry in series:
+            if not isinstance(entry, dict):
+                continue
+            details = entry.get("data", {}).get("instant", {}).get("details", {})
+            temp = as_float(details.get("air_temperature"))
+            if temp is None:
+                continue
+            next_hour = entry.get("data", {}).get("next_1_hours", {}) or {}
+            symbol = (next_hour.get("summary") or {}).get("symbol_code") or ""
+            icon, text = metno_info(symbol, True)
+            parsed = parse_datetime(entry.get("time"))
+            local_time = parsed.astimezone(zone).isoformat() if parsed is not None else ""
+            result.append(
+                HourlyForecast(
+                    time=local_time,
+                    temp_c=temp,
+                    icon=icon,
+                    text=text,
+                )
+            )
+            if len(result) >= 4:
+                break
+        return result
 
     def _fetch_alerts(self, location: Location, config: Dict[str, Any]) -> list:
         try:

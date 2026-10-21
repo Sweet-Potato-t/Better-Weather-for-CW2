@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any, Dict, List
 
 from ..mappings import wwo_icon, wwo_info
-from ..models import DailyForecast, Location, WeatherSnapshot
+from ..models import DailyForecast, HourlyForecast, Location, WeatherSnapshot
 from ..util import ProviderError, as_float, as_int, first
 from .base import WeatherProvider
 
@@ -59,6 +59,7 @@ class WttrProvider(WeatherProvider):
                 )
             )
 
+        hourly = _parse_hourly(first(daily_raw) or {}, str(current.get("observation_time") or ""))
         first_day = first(daily_raw) or {}
         astronomy = first((payload or {}).get("weather")) or {}
         astro = first(astronomy.get("astronomy")) or {}
@@ -87,8 +88,49 @@ class WttrProvider(WeatherProvider):
             sunrise=str(astro.get("sunrise") or ""),
             sunset=str(astro.get("sunset") or ""),
             daily=forecasts,
+            hourly=hourly,
             alerts=[],
         )
+
+
+def _parse_hourly(day: Dict[str, Any], observation_time: str) -> List[HourlyForecast]:
+    from ..util import parse_datetime
+
+    items = day.get("hourly") or []
+    current_hour = 0
+    parsed = parse_datetime(observation_time)
+    if parsed is not None:
+        current_hour = parsed.hour
+    candidates = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        try:
+            raw_time = int(str(item.get("time") or "0"))
+        except ValueError:
+            raw_time = 0
+        hour = raw_time // 100
+        if hour < current_hour:
+            continue
+        candidates.append((hour, item))
+    if not candidates:
+        candidates = [(int(str(item.get("time") or "0")) // 100, item) for item in items if isinstance(item, dict)]
+    result: List[HourlyForecast] = []
+    for hour, item in candidates[:4]:
+        code = item.get("weatherCode")
+        is_day = 6 <= hour < 19
+        icon = wwo_icon(code, is_day)
+        _, text = wwo_info(code, str(item.get("weatherDesc") or ""))
+        result.append(
+            HourlyForecast(
+                time=f"{hour:02d}:00",
+                temp_c=as_float(item.get("tempC")),
+                icon=icon,
+                text=text,
+                pop=as_int(item.get("chanceofrain")),
+            )
+        )
+    return result
 
 
 def _is_daytime(value: Any) -> bool:

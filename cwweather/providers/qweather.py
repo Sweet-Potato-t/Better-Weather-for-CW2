@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any, Dict, List
 
 from ..mappings import qweather_info
-from ..models import DailyForecast, Location, WeatherSnapshot
+from ..models import DailyForecast, HourlyForecast, Location, WeatherSnapshot
 from ..util import ProviderError, as_float, as_int, first
 from .base import WeatherProvider
 
@@ -39,6 +39,7 @@ class QWeatherProvider(WeatherProvider):
         if str((daily_payload or {}).get("code")) == "200":
             daily_raw = (daily_payload or {}).get("daily") or []
 
+        hourly = self._fetch_hourly(base, common)
         alerts = self._fetch_alerts(base, common)
 
         icon_code = str(now.get("icon") or "")
@@ -92,8 +93,36 @@ class QWeatherProvider(WeatherProvider):
             sunrise=str(first_day.get("sunrise") or ""),
             sunset=str(first_day.get("sunset") or ""),
             daily=forecasts,
+            hourly=hourly,
             alerts=alerts,
         )
+
+    def _fetch_hourly(self, base: str, common: Dict[str, Any]) -> List[HourlyForecast]:
+        try:
+            payload = self._get_json(f"{base}/v7/weather/24h", common)
+        except Exception:
+            return []
+        if str((payload or {}).get("code")) != "200":
+            return []
+        result: List[HourlyForecast] = []
+        for item in (payload or {}).get("hourly") or []:
+            if not isinstance(item, dict):
+                continue
+            code = str(item.get("icon") or "")
+            is_day = not code.startswith("15")
+            icon, text = qweather_info(code, str(item.get("text") or ""), is_day)
+            result.append(
+                HourlyForecast(
+                    time=str(item.get("fxTime") or ""),
+                    temp_c=as_float(item.get("temp")),
+                    icon=icon,
+                    text=text,
+                    pop=as_int(item.get("pop")),
+                )
+            )
+            if len(result) >= 4:
+                break
+        return result
 
     def _fetch_alerts(self, base: str, common: Dict[str, Any]) -> list:
         try:
