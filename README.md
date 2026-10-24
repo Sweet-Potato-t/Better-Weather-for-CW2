@@ -4,9 +4,7 @@
 [Class Widgets 2 SDK](https://github.com/class-widgets/class-widgets-sdk) 编写，
 项目结构参考了 [插件模板 V2](https://github.com/Class-Widgets/plugin-template-v2)。
 
-仓库：<https://github.com/Sweet-Potato-t/Better-Weather-for-CW2>
-
-![设置页预览](docs/preview-settings.png)
+此插件使用Deepseek V4.1 Flash编写，由口天一大化石提供独家Token支持
 
 ## 功能
 
@@ -39,6 +37,8 @@
   空白。
 - **无第三方运行时依赖**：网络请求使用 Python 标准库 `urllib`，不需要安装
   `requests`、`aiohttp` 等包。
+  
+![设置页预览](docs/preview-settings.png)
 
 ![天气主屏](docs/preview-widget.png) 
 
@@ -53,9 +53,7 @@
 ## API Key 安全
 
 API Key 使用 Windows DPAPI（当前 Windows 用户上下文）加密后保存到 Class Widgets
-配置中，配置文件里的值为 `dpapi:` 开头的密文。设置页只显示“已加密保存”，不会
-把明文回填到输入框，也不会写入日志。迁移旧版本时，首次加载会把已有的明文 Key
-自动转换为密文。
+配置中，配置文件里的值为密文。设置页只显示“已加密保存”，不会把明文回填到输入框，也不会写入日志。迁移旧版本时，首次加载会把已有的明文 Key自动转换为密文。
 
 DPAPI 密钥绑定当前 Windows 用户；把配置复制到其他用户或电脑后需要重新填写 Key。
 
