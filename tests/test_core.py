@@ -360,6 +360,7 @@ class PaidProviderRequestTests(unittest.TestCase):
 
 
 class SecretStorageTests(unittest.TestCase):
+    @unittest.skipUnless(secrets.available(), "DPAPI is only available on Windows")
     def test_dpapi_round_trip(self):
         ciphertext = secrets.protect("test-api-key")
         self.assertTrue(ciphertext.startswith(secrets.PREFIX))
