@@ -40,9 +40,11 @@
 - **无第三方运行时依赖**：网络请求使用 Python 标准库 `urllib`，不需要安装
   `requests`、`aiohttp` 等包。
 
-| 天气主屏 | 未来 3 小时 | 降水提醒 |
-| --- | --- | --- |
-| ![天气主屏](docs/preview-widget.png) | ![未来 3 小时](docs/preview-hourly.png) | ![降水提醒](docs/preview-precip.png) |
+![天气主屏](docs/preview-widget.png) 
+
+![未来 3 小时](docs/preview-hourly.png) 
+
+![降水提醒](docs/preview-precip.png)
 
 ![预警轮播](docs/preview-alert.png)
 
@@ -173,19 +175,6 @@ OpenWeatherMap 和 WeatherAPI 提供；彩云天气的逐小时接口当前尚�
 - Qt：Class Widgets 2 自带的 PySide6。
 - 无第三方 Python 运行时依赖。
 
-## 开发
-
-```bash
-# 语法检查
-python -m compileall .
-
-# 重新生成图标（可选，需要 Pillow）
-python tools/generate_icons.py
-
-# 打包（需要安装 class-widgets-sdk 开发依赖）
-cw-plugin-pack
-```
-
 主要文件：
 
 ```text
@@ -222,7 +211,6 @@ com.sweetpotato.weather/
   [wttr.in](https://wttr.in/)、[和风天气](https://www.qweather.com/)、
   [OpenWeatherMap](https://openweathermap.org/)、
   [WeatherAPI](https://www.weatherapi.com/)、[彩云天气](https://www.caiyunapp.com/)
-- 图标由本项目的 `tools/generate_icons.py` 生成
 
 ## 许可证
 
