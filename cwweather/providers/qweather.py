@@ -15,18 +15,26 @@ class QWeatherProvider(WeatherProvider):
     name = "和风天气"
     needs_key = True
     supports_alerts = True
-    description = "和风天气 API，需要从 dev.qweather.com 获取 API Key；支持中国及全球城市和官方预警。"
+    description = "和风天气 API，需要 API Key 和专属 API Host；支持中国及全球城市和官方预警。"
 
     def validate(self, location: Location, config: Dict[str, Any]) -> None:
         self._require_key(config, "qweather_api_key")
 
     def fetch(self, location: Location, config: Dict[str, Any]) -> WeatherSnapshot:
         key = self._require_key(config, "qweather_api_key")
-        base = _base_url(str(config.get("qweather_host") or ""))
+        host = str(config.get("qweather_host") or "").strip()
+        if not host:
+            raise ProviderError("请先在插件设置中填写和风天气 API Host")
+        base = _base_url(host)
         coords = f"{location.longitude:.2f},{location.latitude:.2f}"
-        common = {"location": coords, "key": key, "lang": "zh", "unit": "m"}
+        common = {"location": coords, "lang": "zh", "unit": "m"}
+        headers = (
+            {"Authorization": f"Bearer {key}"}
+            if key.count(".") == 2
+            else {"X-QW-Api-Key": key}
+        )
 
-        now_payload = self._get_json(f"{base}/v7/weather/now", common)
+        now_payload = self._get_json(f"{base}/v7/weather/now", common, headers=headers)
         if str((now_payload or {}).get("code")) != "200":
             raise ProviderError(f"和风天气当前天气请求失败（code {now_payload.get('code')}）")
         now = (now_payload or {}).get("now") or {}
@@ -34,13 +42,13 @@ class QWeatherProvider(WeatherProvider):
         if temp is None:
             raise ProviderError("和风天气未返回当前温度")
 
-        daily_payload = self._get_json(f"{base}/v7/weather/3d", common)
+        daily_payload = self._get_json(f"{base}/v7/weather/3d", common, headers=headers)
         daily_raw: List[Dict[str, Any]] = []
         if str((daily_payload or {}).get("code")) == "200":
             daily_raw = (daily_payload or {}).get("daily") or []
 
-        hourly = self._fetch_hourly(base, common)
-        alerts = self._fetch_alerts(base, common)
+        hourly = self._fetch_hourly(base, common, headers)
+        alerts = self._fetch_alerts(base, common, headers)
 
         icon_code = str(now.get("icon") or "")
         is_day = not icon_code.startswith("15")
@@ -97,9 +105,9 @@ class QWeatherProvider(WeatherProvider):
             alerts=alerts,
         )
 
-    def _fetch_hourly(self, base: str, common: Dict[str, Any]) -> List[HourlyForecast]:
+    def _fetch_hourly(self, base: str, common: Dict[str, Any], headers: Dict[str, str]) -> List[HourlyForecast]:
         try:
-            payload = self._get_json(f"{base}/v7/weather/24h", common)
+            payload = self._get_json(f"{base}/v7/weather/24h", common, headers=headers)
         except Exception:
             return []
         if str((payload or {}).get("code")) != "200":
@@ -124,9 +132,9 @@ class QWeatherProvider(WeatherProvider):
                 break
         return result
 
-    def _fetch_alerts(self, base: str, common: Dict[str, Any]) -> list:
+    def _fetch_alerts(self, base: str, common: Dict[str, Any], headers: Dict[str, str]) -> list:
         try:
-            payload = self._get_json(f"{base}/v7/warning/now", common)
+            payload = self._get_json(f"{base}/v7/warning/now", common, headers=headers)
         except Exception:
             return []
         if str((payload or {}).get("code")) != "200":
@@ -158,7 +166,7 @@ class QWeatherProvider(WeatherProvider):
 
 
 def _base_url(host: str) -> str:
-    host = (host or "devapi.qweather.com").strip().rstrip("/")
+    host = (host or "").strip().rstrip("/")
     if not host.startswith("http://") and not host.startswith("https://"):
         host = "https://" + host
     return host

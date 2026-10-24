@@ -10,6 +10,10 @@ CWTheme.Widget {
 
     padding: miniMode ? 16 : 24
 
+    // 天气屏幕切换频繁，禁止父级主题的宽高弹性动画，避免隐藏/显示时掉帧。
+    Behavior on implicitWidth { enabled: false }
+    Behavior on height { enabled: false }
+
     readonly property var cfg: backend && backend.settings ? backend.settings : ({})
     readonly property var payload: backend && backend.weather ? backend.weather : ({})
     readonly property var current: payload && payload.current ? payload.current : ({})
@@ -83,30 +87,36 @@ CWTheme.Widget {
             return { active: true, pop: maxPop, hour: next.hour || "", icon: next.icon || "rain_light" }
         return { active: false, pop: 0, hour: "", icon: "rain_light" }
     }
+    function headerSuffix() {
+        var parts = []
+        if (cfg.show_location !== false && backend && backend.locationText)
+            parts.push(backend.locationText)
+        if (cfg.show_provider === true && backend && backend.weather
+                && backend.weather.provider && backend.weather.provider.name)
+            parts.push(backend.weather.provider.name)
+        return parts.length > 0 ? " · " + parts.join(" · ") : ""
+    }
+
     text: {
-        var location = backend && backend.locationText ? backend.locationText : ""
-        var provider = backend && backend.weather && backend.weather.provider
-            ? backend.weather.provider.name : ""
         var value = ""
         switch (shown.kind) {
         case "alert":
-            value = (activeAlert.level_text || "天气预警")
-                + (location && cfg.show_location !== false ? " · " + location : "")
+            value = root.activeAlert.level_text || "天气预警"
             break
         case "hourly":
-            value = "未来 3 小时" + (location ? " · " + location : "")
+            value = "未来 3 小时"
             break
         case "precip":
-            value = "降水提醒" + (location ? " · " + location : "")
+            value = "降水提醒"
             break
         case "unavailable":
             value = "天气"
             break
         default:
-            value = [current.text, location, cfg.show_provider ? provider : ""]
-                .filter(function (part) { return !!part }).join(" · ")
+            value = root.current.text || "天气"
         }
-        return value.length > 26 ? value.substring(0, 25) + "…" : value
+        value += root.headerSuffix()
+        return value.length > 36 ? value.substring(0, 35) + "…" : value
     }
 
     actions: RowLayout {

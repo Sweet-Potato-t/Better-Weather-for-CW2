@@ -23,6 +23,26 @@ class Location:
     source: str = "manual"
 
     @property
+    def short_name(self) -> str:
+        """Smallest available administrative unit for compact widget display."""
+        name = (self.name or "").strip()
+        district = (self.district or "").strip()
+        city = (self.city or "").strip()
+        region = (self.region or "").strip()
+        country = (self.country or "").strip()
+        if name and name not in {city, region, country}:
+            return name
+        if district:
+            return district
+        if city:
+            return city
+        if name:
+            return name
+        if region:
+            return region
+        return country
+
+    @property
     def display_name(self) -> str:
         parts: List[str] = []
         for value in (self.name, self.district):
@@ -55,6 +75,7 @@ class Location:
             "timezone": self.timezone,
             "source": self.source,
             "display_name": self.display_name,
+            "short_name": self.short_name,
         }
 
 

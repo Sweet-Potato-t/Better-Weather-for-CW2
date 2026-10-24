@@ -86,7 +86,7 @@ class WeatherApiProvider(WeatherProvider):
             low_c=as_float(first_day_data.get("mintemp_c")),
             humidity=as_int(current.get("humidity")),
             wind_dir=str(current.get("wind_dir") or ""),
-            wind_scale=_wind_scale(as_float(current.get("wind_kph"))),
+            wind_scale=self._wind_scale(as_float(current.get("wind_kph"))),
             wind_speed_kmh=as_float(current.get("wind_kph")),
             pressure_hpa=as_float(current.get("pressure_mb")),
             visibility_km=as_float(current.get("vis_km")),

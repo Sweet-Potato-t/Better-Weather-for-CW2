@@ -15,7 +15,7 @@ class CaiyunProvider(WeatherProvider):
     name = "彩云天气"
     needs_key = True
     supports_alerts = True
-    description = "彩云天气，需要 Token；中国地区分钟级降水与预警能力较好。"
+    description = "彩云天气，需要 Token；v2.6 Token 路径认证，官方推荐 App Key/Secret 签名。"
 
     def validate(self, location: Location, config: Dict[str, Any]) -> None:
         self._require_key(config, "caiyun_api_key")
@@ -24,7 +24,7 @@ class CaiyunProvider(WeatherProvider):
         token = self._require_key(config, "caiyun_api_key")
         coords = f"{location.longitude:.4f},{location.latitude:.4f}"
         realtime = self._get_json(
-            f"https://api.caiyunapp.com/v2.6/{token}/{coords}/realtime.json",
+            f"https://api.caiyunapp.com/v2.6/{token}/{coords}/realtime",
             {"lang": "zh_CN"},
         )
         result = (realtime or {}).get("result") or {}
@@ -39,7 +39,7 @@ class CaiyunProvider(WeatherProvider):
         daily_payload = {}
         try:
             daily_response = self._get_json(
-                f"https://api.caiyunapp.com/v2.6/{token}/{coords}/daily.json",
+                f"https://api.caiyunapp.com/v2.6/{token}/{coords}/daily",
                 {"lang": "zh_CN", "alert": "true"},
             )
             daily_payload = (daily_response or {}).get("result") or {}
@@ -70,7 +70,13 @@ class CaiyunProvider(WeatherProvider):
 
         astro = first(daily_raw.get("astro")) or {}
         wind = realtime_data.get("wind") or {}
-        aqi = (realtime_data.get("aqi") or {}).get("value")
+        air_quality = realtime_data.get("air_quality") or {}
+        aqi_obj = air_quality.get("aqi") or {}
+        aqi = aqi_obj.get("chn") if isinstance(aqi_obj, dict) else None
+        if aqi is None and isinstance(aqi_obj, dict):
+            aqi = aqi_obj.get("usa")
+        sunrise = astro.get("sunrise") if isinstance(astro.get("sunrise"), dict) else {}
+        sunset = astro.get("sunset") if isinstance(astro.get("sunset"), dict) else {}
         alerts = self._alerts(
             (daily_payload.get("alert") or {}).get("content") or [],
             self.id,
@@ -96,12 +102,16 @@ class CaiyunProvider(WeatherProvider):
             wind_dir=_wind_direction(as_float(wind.get("direction"))),
             wind_scale=_wind_scale(as_float(wind.get("speed"))),
             wind_speed_kmh=as_float(wind.get("speed")),
-            pressure_hpa=as_float(realtime_data.get("pressure")),
+            pressure_hpa=(
+                as_float(realtime_data.get("pressure")) / 100.0
+                if as_float(realtime_data.get("pressure")) is not None
+                else None
+            ),
             visibility_km=as_float(realtime_data.get("visibility")),
             aqi=as_int(aqi),
             obs_time=str(realtime_data.get("server_time") or ""),
-            sunrise=str(astro.get("sunrise") or ""),
-            sunset=str(astro.get("sunset") or ""),
+            sunrise=str(sunrise.get("time") or ""),
+            sunset=str(sunset.get("time") or ""),
             daily=daily,
             alerts=alerts,
         )

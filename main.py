@@ -15,6 +15,7 @@ from PySide6.QtCore import Property, QTimer, Qt, Signal, Slot
 
 from ClassWidgets.SDK import CW2Plugin, PluginAPI
 
+from cwweather import secrets as secret_store
 from cwweather.config import WeatherConfig
 from cwweather.formatting import high_low_text, temp_text, unit_symbol
 from cwweather.models import WeatherSnapshot
@@ -59,6 +60,12 @@ _STRING_FIELDS = {
     "caiyun_api_key",
 }
 _FIELDS = _BOOL_FIELDS | _INT_FIELDS | _FLOAT_FIELDS | _STRING_FIELDS
+SECRET_FIELDS = {
+    "qweather_api_key",
+    "openweathermap_api_key",
+    "weatherapi_api_key",
+    "caiyun_api_key",
+}
 
 
 def _config_fields() -> set[str]:
@@ -131,6 +138,7 @@ class Plugin(CW2Plugin):
 
         try:
             self.api.config.register_plugin_model(self.pid, self.config)
+            self._migrate_secrets()
         except Exception:
             logger.exception("Failed to register weather plugin config")
 
@@ -214,7 +222,7 @@ class Plugin(CW2Plugin):
                 time.sleep(2.0)
 
     def _perform_refresh(self) -> None:
-        config = self._config_snapshot()
+        config = self._service_config()
         with self._state_lock:
             device = dict(self._device_location) if self._device_location else None
             force_ip = self._force_ip_next
@@ -428,7 +436,7 @@ class Plugin(CW2Plugin):
     # Configuration
     # ------------------------------------------------------------------
 
-    def _config_snapshot(self) -> Dict[str, Any]:
+    def _config_snapshot(self, *, redact: bool = True) -> Dict[str, Any]:
         try:
             data = self.config.model_dump()
         except Exception:
@@ -439,7 +447,36 @@ class Plugin(CW2Plugin):
                 data.setdefault(key, value)
         except Exception:
             pass
+        for field in SECRET_FIELDS:
+            value = str(data.get(field) or "").strip()
+            data[f"{field}_set"] = bool(value)
+            if redact:
+                data[field] = ""
         return data
+
+    def _service_config(self) -> Dict[str, Any]:
+        data = self._config_snapshot(redact=False)
+        for field in SECRET_FIELDS:
+            try:
+                data[field] = secret_store.unprotect(str(data.get(field) or ""))
+            except Exception:
+                logger.exception(f"Failed to decrypt {field}")
+                data[field] = ""
+        return data
+
+    def _migrate_secrets(self) -> None:
+        changed = False
+        for field in SECRET_FIELDS:
+            raw = str(getattr(self.config, field, "") or "").strip()
+            if not raw or secret_store.is_protected(raw):
+                continue
+            try:
+                setattr(self.config, field, secret_store.protect(raw))
+                changed = True
+            except Exception:
+                logger.exception(f"Failed to encrypt {field}; leaving legacy value")
+        if changed:
+            self._save_config()
 
     def _config_int(self, key: str, default: int, minimum: int, maximum: int) -> int:
         try:
@@ -469,7 +506,13 @@ class Plugin(CW2Plugin):
         if key not in self._field_names or key not in _FIELDS:
             return
         try:
-            coerced = self._coerce(key, value)
+            if key in SECRET_FIELDS:
+                text = str(value or "").strip()
+                if not text:
+                    return
+                coerced = secret_store.protect(text)
+            else:
+                coerced = self._coerce(key, value)
             old_value = getattr(self.config, key, None)
             setattr(self.config, key, coerced)
             if old_value == coerced:
@@ -843,7 +886,7 @@ class Plugin(CW2Plugin):
     @Property(str, notify=weatherChanged)
     def locationText(self) -> str:
         location = self._payload.get("location") or {}
-        return str(location.get("display_name") or "")
+        return str(location.get("short_name") or location.get("display_name") or "")
 
     @Property(str, notify=weatherChanged)
     def locationSourceText(self) -> str:

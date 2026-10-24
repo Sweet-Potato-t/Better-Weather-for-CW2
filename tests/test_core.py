@@ -18,8 +18,13 @@ from cwweather.mappings import (
     xiaomi_info,
 )
 from cwweather.models import Alert, DailyForecast, HourlyForecast, Location, WeatherSnapshot, normalize_alerts
+from cwweather.providers.caiyun import CaiyunProvider
 from cwweather.providers.open_meteo import OpenMeteoProvider
+from cwweather.providers.openweathermap import OpenWeatherMapProvider
+from cwweather.providers.weatherapi import WeatherApiProvider
+from cwweather.providers.qweather import QWeatherProvider
 from cwweather.providers.xiaomi import XiaomiProvider
+from cwweather import secrets
 from cwweather.service import WeatherService
 
 
@@ -66,6 +71,13 @@ class ModelTests(unittest.TestCase):
     def test_location_display_name(self):
         location = Location(39.9, 116.4, name="北京市", city="北京市", region="北京市", country="中国")
         self.assertEqual(location.display_name, "北京市 · 中国")
+    def test_location_short_name_uses_smallest_unit(self):
+        beijing = Location(39.9, 116.4, name="北京市", city="北京市", district="东城区", region="北京市", country="中国")
+        self.assertEqual(beijing.short_name, "东城区")
+        town = Location(30.7, 120.5, name="乌镇", city="嘉兴市", district="桐乡市", region="浙江省", country="中国")
+        self.assertEqual(town.short_name, "乌镇")
+        manual = Location(40.5, 81.2, name="阿拉尔", region="新疆", country="中国")
+        self.assertEqual(manual.short_name, "阿拉尔")
 
     def test_dedupe_and_sort_alerts(self):
         raw = [
@@ -221,3 +233,138 @@ class XiaomiParserTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ApiRequestTests(unittest.TestCase):
+    def test_qweather_uses_api_host_and_key_header(self):
+        calls = []
+
+        def fake_get(url, params=None, *, headers=None, config=None):
+            calls.append((url, params or {}, headers or {}))
+            if url.endswith("/v7/weather/now"):
+                return {"code": "200", "now": {
+                    "temp": "15", "icon": "101", "text": "晴",
+                    "obsTime": "2026-10-23T18:00+08:00", "windScale": "2",
+                    "windSpeed": "3", "humidity": "40",
+                }}
+            if url.endswith("/v7/weather/3d"):
+                return {"code": "200", "daily": [{
+                    "fxDate": "2026-10-23", "tempMax": "20", "tempMin": "10",
+                    "iconDay": "101", "textDay": "晴", "sunrise": "07:00", "sunset": "18:00",
+                }]}
+            if url.endswith("/v7/weather/24h"):
+                return {"code": "200", "hourly": [{
+                    "fxTime": "2026-10-23T19:00+08:00", "temp": "14", "icon": "101",
+                    "text": "晴", "pop": "10",
+                }]}
+            if url.endswith("/v7/warning/now"):
+                return {"code": "200", "warning": []}
+            raise AssertionError(url)
+
+        provider = QWeatherProvider()
+        provider._get_json = fake_get
+        location = Location(39.9, 116.4, name="北京市", timezone="Asia/Shanghai")
+        snapshot = provider.fetch(location, {
+            "qweather_api_key": "test-key", "qweather_host": "abcxyz.qweatherapi.com",
+        })
+        self.assertEqual(snapshot.current_temp_c, 15)
+        self.assertTrue(calls[0][0].startswith("https://abcxyz.qweatherapi.com/"))
+        self.assertEqual(calls[0][2].get("X-QW-Api-Key"), "test-key")
+        self.assertNotIn("key", calls[0][1])
+
+    def test_caiyun_v26_endpoints_and_fields(self):
+        calls = []
+
+        def fake_get(url, params=None, *, headers=None, config=None):
+            calls.append((url, params or {}))
+            if url.endswith("/realtime"):
+                return {"status": "ok", "result": {"realtime": {
+                    "temperature": 18, "skycon": "PARTLY_CLOUDY_DAY",
+                    "humidity": 0.5, "pressure": 100000, "visibility": 12,
+                    "wind": {"speed": 8, "direction": 90},
+                    "air_quality": {"aqi": {"chn": 63, "usa": 124}},
+                    "server_time": 1761200000,
+                }}}
+            if url.endswith("/daily"):
+                return {"status": "ok", "result": {
+                    "daily": {
+                        "temperature": [{"date": "2026-10-23", "max": 22, "min": 11}],
+                        "skycon": [{"date": "2026-10-23", "value": "PARTLY_CLOUDY_DAY"}],
+                        "astro": [{"sunrise": {"time": "07:00"}, "sunset": {"time": "18:00"}}],
+                    },
+                    "alert": {"content": []},
+                }}
+            raise AssertionError(url)
+
+        provider = CaiyunProvider()
+        provider._get_json = fake_get
+        location = Location(39.9, 116.4, name="北京市", timezone="Asia/Shanghai")
+        snapshot = provider.fetch(location, {"caiyun_api_key": "test-token"})
+        self.assertEqual(snapshot.current_temp_c, 18)
+        self.assertEqual(snapshot.pressure_hpa, 1000)
+        self.assertEqual(snapshot.aqi, 63)
+        self.assertEqual(snapshot.sunrise, "07:00")
+        self.assertTrue(calls[0][0].endswith("/realtime"))
+        self.assertTrue(calls[1][0].endswith("/daily"))
+        self.assertNotIn(".json", calls[0][0])
+
+
+class PaidProviderRequestTests(unittest.TestCase):
+    def test_openweather_onecall_appid(self):
+        calls = []
+        def fake_get(url, params=None, *, headers=None, config=None):
+            calls.append((url, params or {}))
+            return {
+                "current": {"temp": 18, "weather": [{"id": 801, "description": "多云"}],
+                            "dt": 1761200000, "sunrise": 1761170000, "sunset": 1761210000},
+                "daily": [{"dt": 1761200000, "temp": {"max": 22, "min": 11},
+                           "weather": [{"id": 801, "description": "多云"}]}],
+                "hourly": [{"dt": 1761200000, "temp": 18, "pop": 0.2,
+                            "weather": [{"id": 801, "description": "多云"}]}],
+                "alerts": [],
+            }
+        provider = OpenWeatherMapProvider(); provider._get_json = fake_get
+        provider.fetch(Location(39.9, 116.4), {"openweathermap_api_key": "owm-key"})
+        url, params = calls[0]
+        self.assertEqual(url, "https://api.openweathermap.org/data/3.0/onecall")
+        self.assertEqual(params["appid"], "owm-key")
+        self.assertEqual(params["units"], "metric")
+        self.assertEqual(params["lang"], "zh_cn")
+        self.assertEqual(params["exclude"], "minutely")
+
+    def test_weatherapi_forecast_key(self):
+        calls = []
+        def fake_get(url, params=None, *, headers=None, config=None):
+            calls.append((url, params or {}))
+            return {
+                "current": {"temp_c": 18, "is_day": 1, "last_updated": "2026-10-23 18:00",
+                            "condition": {"code": 1000, "text": "晴"}},
+                "forecast": {"forecastday": [{
+                    "date": "2026-10-23", "day": {"maxtemp_c": 22, "mintemp_c": 11,
+                    "condition": {"code": 1000, "text": "晴"}},
+                    "astro": {"sunrise": "07:00", "sunset": "18:00"},
+                    "hour": [{"time": "2026-10-23 19:00", "temp_c": 17, "is_day": 0,
+                              "chance_of_rain": 10, "condition": {"code": 1000, "text": "晴"}}],
+                }]},
+                "alerts": {"alert": []},
+            }
+        provider = WeatherApiProvider(); provider._get_json = fake_get
+        provider.fetch(Location(39.9, 116.4), {"weatherapi_api_key": "wa-key"})
+        url, params = calls[0]
+        self.assertEqual(url, "https://api.weatherapi.com/v1/forecast.json")
+        self.assertEqual(params["key"], "wa-key")
+        self.assertEqual(params["q"], "39.9000,116.4000")
+        self.assertEqual(params["aqi"], "yes")
+        self.assertEqual(params["alerts"], "yes")
+        self.assertEqual(params["lang"], "zh")
+
+
+class SecretStorageTests(unittest.TestCase):
+    def test_dpapi_round_trip(self):
+        ciphertext = secrets.protect("test-api-key")
+        self.assertTrue(ciphertext.startswith(secrets.PREFIX))
+        self.assertNotIn("test-api-key", ciphertext)
+        self.assertEqual(secrets.unprotect(ciphertext), "test-api-key")
+
+    def test_legacy_plaintext_is_still_readable(self):
+        self.assertEqual(secrets.unprotect("legacy-key"), "legacy-key")

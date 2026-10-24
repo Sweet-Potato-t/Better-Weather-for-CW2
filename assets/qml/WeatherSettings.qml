@@ -33,7 +33,7 @@ FluentPage {
 
     function providerKeyHint(providerId) {
         if (providerId === "qweather")
-            return "在 dev.qweather.com 创建项目后填写 Key；免费订阅请使用 devapi.qweather.com。"
+            return "在 dev.qweather.com 创建项目和 API Key，并从控制台设置页复制你的 API Host；公共域名已逐步停用。"
         if (providerId === "openweathermap")
             return "需要 One Call 3.0 权限；免费账号可能需要单独订阅。"
         if (providerId === "weatherapi")
@@ -46,6 +46,21 @@ FluentPage {
     function openAlertDetail(data) {
         alertDialog.alertData = data || ({})
         alertDialog.open()
+    }
+
+    function keyHint(providerId) {
+        var base = root.providerKeyHint(providerId)
+        var field = providerId === "qweather" ? "qweather_api_key"
+            : providerId === "openweathermap" ? "openweathermap_api_key"
+            : providerId === "weatherapi" ? "weatherapi_api_key" : "caiyun_api_key"
+        return cfg[field + "_set"] ? base + "（当前已加密保存）" : base
+    }
+
+    function keyPlaceholder(providerId) {
+        var field = providerId === "qweather" ? "qweather_api_key"
+            : providerId === "openweathermap" ? "openweathermap_api_key"
+            : providerId === "weatherapi" ? "weatherapi_api_key" : "caiyun_api_key"
+        return cfg[field + "_set"] ? "已加密保存，输入新值可替换" : "输入 " + providerId + " API Key"
     }
 
     function syncControls() {
@@ -69,11 +84,11 @@ FluentPage {
         widgetPrecipSwitch.checked = cfg.widget_show_precip !== false
         widgetCarouselSwitch.checked = cfg.widget_carousel !== false
         widgetSecondsSpin.value = Number(cfg.widget_main_seconds || 8)
-        if (!qweatherKeyField.activeFocus) qweatherKeyField.text = cfg.qweather_api_key || ""
-        if (!qweatherHostField.activeFocus) qweatherHostField.text = cfg.qweather_host || "devapi.qweather.com"
-        if (!owmKeyField.activeFocus) owmKeyField.text = cfg.openweathermap_api_key || ""
-        if (!weatherApiKeyField.activeFocus) weatherApiKeyField.text = cfg.weatherapi_api_key || ""
-        if (!caiyunKeyField.activeFocus) caiyunKeyField.text = cfg.caiyun_api_key || ""
+        if (!qweatherKeyField.activeFocus) qweatherKeyField.text = ""
+        if (!qweatherHostField.activeFocus) qweatherHostField.text = cfg.qweather_host || ""
+        if (!owmKeyField.activeFocus) owmKeyField.text = ""
+        if (!weatherApiKeyField.activeFocus) weatherApiKeyField.text = ""
+        if (!caiyunKeyField.activeFocus) caiyunKeyField.text = ""
         if (!manualLatField.activeFocus) manualLatField.text = Number(cfg.manual_lat || 0).toFixed(4)
         if (!manualLonField.activeFocus) manualLonField.text = Number(cfg.manual_lon || 0).toFixed(4)
         if (!manualNameField.activeFocus) manualNameField.text = cfg.manual_city || ""
@@ -457,66 +472,94 @@ FluentPage {
         }
 
         SettingItem {
-            title: "和风天气 API Key"
+            title: "和风天气 API Key / JWT"
             visible: root.currentProvider === "qweather"
-            description: root.providerKeyHint("qweather")
+            description: root.keyHint("qweather")
 
             TextField {
                 id: qweatherKeyField
                 Layout.preferredWidth: 300
-                placeholderText: "和风天气 API Key"
-                onEditingFinished: if (backend) backend.setOption("qweather_api_key", text)
+                placeholderText: root.keyPlaceholder("qweather")
+                echoMode: TextInput.Password
+                selectByMouse: true
+                onEditingFinished: {
+                    if (backend && text.trim().length > 0) {
+                        backend.setOption("qweather_api_key", text)
+                        text = ""
+                    }
+                }
             }
         }
 
         SettingItem {
             title: "OpenWeatherMap API Key"
             visible: root.currentProvider === "openweathermap"
-            description: root.providerKeyHint("openweathermap")
+            description: root.keyHint("openweathermap")
 
             TextField {
                 id: owmKeyField
                 Layout.preferredWidth: 300
-                placeholderText: "OpenWeatherMap API Key"
-                onEditingFinished: if (backend) backend.setOption("openweathermap_api_key", text)
+                placeholderText: root.keyPlaceholder("openweathermap")
+                echoMode: TextInput.Password
+                selectByMouse: true
+                onEditingFinished: {
+                    if (backend && text.trim().length > 0) {
+                        backend.setOption("openweathermap_api_key", text)
+                        text = ""
+                    }
+                }
             }
         }
 
         SettingItem {
             title: "WeatherAPI Key"
             visible: root.currentProvider === "weatherapi"
-            description: root.providerKeyHint("weatherapi")
+            description: root.keyHint("weatherapi")
 
             TextField {
                 id: weatherApiKeyField
                 Layout.preferredWidth: 300
-                placeholderText: "WeatherAPI Key"
-                onEditingFinished: if (backend) backend.setOption("weatherapi_api_key", text)
+                placeholderText: root.keyPlaceholder("weatherapi")
+                echoMode: TextInput.Password
+                selectByMouse: true
+                onEditingFinished: {
+                    if (backend && text.trim().length > 0) {
+                        backend.setOption("weatherapi_api_key", text)
+                        text = ""
+                    }
+                }
             }
         }
 
         SettingItem {
             title: "彩云天气 Token"
             visible: root.currentProvider === "caiyun"
-            description: root.providerKeyHint("caiyun")
+            description: root.keyHint("caiyun")
 
             TextField {
                 id: caiyunKeyField
                 Layout.preferredWidth: 300
-                placeholderText: "彩云天气 Token"
-                onEditingFinished: if (backend) backend.setOption("caiyun_api_key", text)
+                placeholderText: root.keyPlaceholder("caiyun")
+                echoMode: TextInput.Password
+                selectByMouse: true
+                onEditingFinished: {
+                    if (backend && text.trim().length > 0) {
+                        backend.setOption("caiyun_api_key", text)
+                        text = ""
+                    }
+                }
             }
         }
 
         SettingItem {
             title: "和风天气 API Host"
             visible: root.currentProvider === "qweather"
-            description: "免费订阅通常为 devapi.qweather.com；商业订阅可改为 api.qweather.com。"
+            description: "填写控制台-设置中的专属 API Host，例如 abcxyz.qweatherapi.com；请不要使用 devapi/api.qweather.com 等公共域名。"
 
             TextField {
                 id: qweatherHostField
                 Layout.preferredWidth: 300
-                placeholderText: "devapi.qweather.com"
+                placeholderText: "你的 API Host，例如 abcxyz.qweatherapi.com"
                 onEditingFinished: if (backend) backend.setOption("qweather_host", text)
             }
         }
@@ -541,7 +584,7 @@ FluentPage {
                 from: 1
                 to: 1440
                 editable: true
-                onValueModified: if (backend) backend.setOption("refresh_interval", value)
+                onValueModified: if (!root.syncing && backend) backend.setOption("refresh_interval", value)
             }
         }
 
@@ -555,7 +598,7 @@ FluentPage {
                 from: 5
                 to: 45
                 editable: true
-                onValueModified: if (backend) backend.setOption("timeout", value)
+                onValueModified: if (!root.syncing && backend) backend.setOption("timeout", value)
             }
         }
     }
@@ -807,7 +850,7 @@ FluentPage {
                 from: 1
                 to: 300
                 editable: true
-                onValueModified: if (backend) backend.setOption("cycle_interval", value)
+                onValueModified: if (!root.syncing && backend) backend.setOption("cycle_interval", value)
             }
         }
 

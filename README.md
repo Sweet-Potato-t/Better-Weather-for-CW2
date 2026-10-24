@@ -20,6 +20,9 @@
 - **显示模式**：主屏可切换“实时温度”或“最高 / 最低温”两种模式。
 - **小组件设置集中管理**：显示模式、小时预报、降水提醒、轮播和主屏停留时长统一放在插件设置页。
 - **点击刷新**：点击小组件立即刷新天气。
+- **API Key 加密保存**：Windows DPAPI 加密后写入配置，设置页不回显明文；输入新 Key 才会替换。
+- **精简位置名**：小组件只显示市/县/乡/镇中最小的一级；完整位置仍保留在天气数据的 `display_name` 中。
+- **显示设置全局生效**：显示位置和显示天气源会应用到主屏、小时、降水和预警所有屏幕。
 - **统一字号**：主屏、未来 3 小时、降水提醒和预警屏幕共用同一套标题、正文和图标尺寸。
 - **官方视觉**：沿用 Class Widgets 2 的 Widget 主题背景、边框、圆角和 100px 高度；宽度由内容自适应，不再固定为 300px。
 - **天气预警**：预警作为独立屏幕加入轮播，逐条显示预警图标、级别和简要信息；
@@ -45,6 +48,15 @@
 
 ![预警详情](docs/preview-alert-detail.png)
 
+## API Key 安全
+
+API Key 使用 Windows DPAPI（当前 Windows 用户上下文）加密后保存到 Class Widgets
+配置中，配置文件里的值为 `dpapi:` 开头的密文。设置页只显示“已加密保存”，不会
+把明文回填到输入框，也不会写入日志。迁移旧版本时，首次加载会把已有的明文 Key
+自动转换为密文。
+
+DPAPI 密钥绑定当前 Windows 用户；把配置复制到其他用户或电脑后需要重新填写 Key。
+
 ## 数据源
 
 | ID | 名称 | 需要 Key | 预警 | 说明 |
@@ -53,10 +65,10 @@
 | `xiaomi` | 小米天气 | 否 | 是 | 小米天气 App 同款非官方接口，仅中国大陆 |
 | `wttr` | wttr.in | 否 | 否 | WWO 数据，部分地区速度较慢 |
 | `met-no` | MET Norway | 否 | 是 | 挪威气象局开放数据，全球预报；预警覆盖以其服务范围为准 |
-| `qweather` | 和风天气 | 是 | 是 | 中国城市与官方预警较完整；免费订阅通常使用 `devapi.qweather.com` |
-| `openweathermap` | OpenWeatherMap | 是 | 是 | One Call 3.0；免费账号可能需要单独订阅 |
-| `weatherapi` | WeatherAPI | 是 | 是 | 全球覆盖，免费额度适合个人使用 |
-| `caiyun` | 彩云天气 | 是 | 是 | 中国地区分钟级降水与预警能力较好 |
+| `qweather` | 和风天气 | 是 | 是 | 中国城市与官方预警较完整；需要控制台专属 API Host，支持 API Key 或 JWT |
+| `openweathermap` | OpenWeatherMap | 是 | 是 | One Call 3.0，使用 `appid` 查询参数；免费账号可能需要单独订阅 |
+| `weatherapi` | WeatherAPI | 是 | 是 | `forecast.json`，使用 `key` 查询参数；免费额度适合个人使用 |
+| `caiyun` | 彩云天气 | 是 | 是 | v2.6 Token 路径认证；官方推荐升级到 App Key/Secret 签名 |
 
 > 预警能力取决于数据源本身。Open-Meteo 和 wttr.in 不提供预警；如果你的主要
 > 需求是预警，请选择和风天气、小米天气、MET Norway、OpenWeatherMap、
@@ -75,9 +87,13 @@ OpenWeatherMap 和 WeatherAPI 提供；彩云天气的逐小时接口当前尚�
 
 ### 关于和风天气
 
-在 [dev.qweather.com](https://dev.qweather.com/) 创建项目并获取 API Key。免费
-订阅通常使用默认 Host `devapi.qweather.com`；商业订阅可改为
-`api.qweather.com`。插件使用经纬度查询，因此不要求填写城市 ID。
+在 [dev.qweather.com](https://dev.qweather.com/) 创建项目并获取 API Key 或 JWT。
+同时在控制台设置页复制你的**专属 API Host**（例如 `abcxyz.qweatherapi.com`）。
+`devapi.qweather.com`、`api.qweather.com` 等公共域名已逐步停用，插件不再默认
+使用它们。插件使用经纬度查询，因此不要求填写城市 ID。
+
+> 和风天气当前仍使用 v7 兼容接口；官方已将 v7 城市天气标记为将弃用，建议后续
+> 迁移到 v1 实时/预报/预警接口。API Key 与 JWT 均已支持。
 
 ## 安装
 

@@ -15,7 +15,7 @@ class OpenWeatherMapProvider(WeatherProvider):
     name = "OpenWeatherMap"
     needs_key = True
     supports_alerts = True
-    description = "OpenWeatherMap One Call 3.0，需要 API Key；预警覆盖部分国家和地区。"
+    description = "OpenWeatherMap One Call 3.0，使用 appid；预警覆盖部分国家和地区。"
 
     def validate(self, location: Location, config: Dict[str, Any]) -> None:
         self._require_key(config, "openweathermap_api_key")

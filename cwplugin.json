@@ -1,7 +1,7 @@
 {
   "id": "com.sweetpotato.weather",
   "name": "Better Weather",
-  "version": "1.1.5",
+  "version": "1.2.1",
   "api_version": ">=0.4.2,<0.8",
   "entry": "main.py",
   "author": "sweetpotato",

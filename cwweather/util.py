@@ -6,6 +6,7 @@ can be dropped into Class Widgets 2 without installing extra packages.
 
 from __future__ import annotations
 
+import gzip
 import json
 import math
 import re
@@ -15,6 +16,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import zlib
 from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, Optional
 
@@ -25,7 +27,7 @@ except Exception:  # pragma: no cover - optional
 
 
 USER_AGENT = (
-    "ClassWidgets-Weather/1.0.0 "
+    "ClassWidgets-Weather/1.2.0 "
     "(Class Widgets 2 plugin; +https://github.com/Class-Widgets/plugin-template-v2)"
 )
 
@@ -92,6 +94,7 @@ def http_get_json(
     request_headers = {
         "User-Agent": USER_AGENT,
         "Accept": "application/json, text/plain;q=0.8, */*;q=0.5",
+        "Accept-Encoding": "gzip, deflate",
     }
     if headers:
         request_headers.update({key: value for key, value in headers.items() if value})
@@ -105,6 +108,14 @@ def http_get_json(
             ) as response:
                 charset = response.headers.get_content_charset() or "utf-8"
                 raw = response.read()
+                encoding = (response.headers.get("Content-Encoding") or "").lower()
+                if "gzip" in encoding:
+                    raw = gzip.decompress(raw)
+                elif "deflate" in encoding:
+                    try:
+                        raw = zlib.decompress(raw)
+                    except zlib.error:
+                        raw = zlib.decompress(raw, -zlib.MAX_WBITS)
             text = raw.decode(charset, errors="replace").strip()
             if not text:
                 raise NetworkError("服务器返回了空响应")

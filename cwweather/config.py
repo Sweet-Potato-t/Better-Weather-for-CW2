@@ -50,7 +50,7 @@ class WeatherConfig(ConfigBaseModel):
 
     # Keys for providers that need one
     qweather_api_key: str = ""
-    qweather_host: str = "devapi.qweather.com"
+    qweather_host: str = ""
     openweathermap_api_key: str = ""
     weatherapi_api_key: str = ""
     caiyun_api_key: str = ""
