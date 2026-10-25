@@ -47,6 +47,9 @@ class WeatherConfig(ConfigBaseModel):
     widget_show_precip: bool = True
     widget_carousel: bool = True
     widget_main_seconds: int = 8
+    widget_tomorrow_enabled: bool = True
+    widget_tomorrow_start: str = "20:00"
+    widget_tomorrow_end: str = "23:59"
 
     # Keys for providers that need one
     qweather_api_key: str = ""

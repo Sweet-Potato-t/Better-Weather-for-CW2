@@ -20,6 +20,7 @@ FluentPage {
     property var detailItems: apiData && apiData.details ? apiData.details : []
     property string currentProvider: cfg.source || "open-meteo"
     property bool syncing: false
+    property int versionClicks: 0
 
     spacing: 12
 
@@ -81,6 +82,11 @@ FluentPage {
         showProviderSwitch.checked = cfg.show_provider === true
         widgetContentCombo.currentIndex = cfg.widget_content_mode === "high_low" ? 1 : 0
         widgetHourlySwitch.checked = cfg.widget_show_hourly !== false
+        tomorrowSwitch.checked = cfg.widget_tomorrow_enabled !== false
+        if (!tomorrowStartField.activeFocus)
+            tomorrowStartField.text = cfg.widget_tomorrow_start || "20:00"
+        if (!tomorrowEndField.activeFocus)
+            tomorrowEndField.text = cfg.widget_tomorrow_end || "23:59"
         widgetPrecipSwitch.checked = cfg.widget_show_precip !== false
         widgetCarouselSwitch.checked = cfg.widget_carousel !== false
         widgetSecondsSpin.value = Number(cfg.widget_main_seconds || 8)
@@ -422,7 +428,7 @@ FluentPage {
                         Text {
                             Layout.fillWidth: true
                             color: Colors.proxy.textSecondaryColor
-                            text: [modelData.level_text, modelData.sender, modelData.pub_time_short]
+                            text: [modelData.level_text, modelData.sender, modelData.pub_time_text]
                                 .filter(function(item) { return !!item }).join(" · ")
                             font.pixelSize: 11
                             elide: Text.ElideRight
@@ -783,6 +789,45 @@ FluentPage {
         }
 
         SettingItem {
+            title: "明日天气"
+            description: "到达设定时间后，在轮播中加入明日天气屏幕。"
+
+            Switch {
+                id: tomorrowSwitch
+                onToggled: if (!root.syncing && backend)
+                    backend.setOption("widget_tomorrow_enabled", checked)
+            }
+        }
+
+        SettingItem {
+            title: "明日天气开始时间"
+            description: "24 小时制，格式 HH:mm；到达开始时间后显示明日天气。"
+
+            TextField {
+                id: tomorrowStartField
+                Layout.preferredWidth: 150
+                placeholderText: "20:00"
+                inputMask: "00:00"
+                onEditingFinished: if (backend && text.length === 5)
+                    backend.setOption("widget_tomorrow_start", text)
+            }
+        }
+
+        SettingItem {
+            title: "明日天气结束时间"
+            description: "到达结束时间后隐藏明日天气；结束时间早于开始时间时按跨午夜处理。"
+
+            TextField {
+                id: tomorrowEndField
+                Layout.preferredWidth: 150
+                placeholderText: "23:59"
+                inputMask: "00:00"
+                onEditingFinished: if (backend && text.length === 5)
+                    backend.setOption("widget_tomorrow_end", text)
+            }
+        }
+
+        SettingItem {
             title: "未来 3 小时"
             description: "在小组件轮播中加入逐小时预报屏幕；数据源没有逐小时数据时不显示。"
 
@@ -888,6 +933,93 @@ FluentPage {
                     backend.setOption("temperature_unit", index === 1 ? "fahrenheit" : "celsius")
                 }
             }
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Data source capabilities
+    // ------------------------------------------------------------------
+
+    SettingExpander {
+        Layout.fillWidth: true
+        title: "数据源能力"
+        description: "各天气源对插件功能的支持情况；✓ 支持，— 不支持或尚未接入。"
+
+        ColumnLayout {
+            Layout.fillWidth: true
+            spacing: 4
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+                Text { Layout.preferredWidth: 140; text: "天气源"; font.pixelSize: 11; font.weight: 600; color: Colors.proxy.textSecondaryColor }
+                Text { Layout.preferredWidth: 64; text: "当前"; horizontalAlignment: Text.AlignHCenter; font.pixelSize: 11; font.weight: 600; color: Colors.proxy.textSecondaryColor }
+                Text { Layout.preferredWidth: 64; text: "明日"; horizontalAlignment: Text.AlignHCenter; font.pixelSize: 11; font.weight: 600; color: Colors.proxy.textSecondaryColor }
+                Text { Layout.preferredWidth: 64; text: "3 小时"; horizontalAlignment: Text.AlignHCenter; font.pixelSize: 11; font.weight: 600; color: Colors.proxy.textSecondaryColor }
+                Text { Layout.preferredWidth: 64; text: "降水"; horizontalAlignment: Text.AlignHCenter; font.pixelSize: 11; font.weight: 600; color: Colors.proxy.textSecondaryColor }
+                Text { Layout.preferredWidth: 64; text: "预警"; horizontalAlignment: Text.AlignHCenter; font.pixelSize: 11; font.weight: 600; color: Colors.proxy.textSecondaryColor }
+            }
+
+            Repeater {
+                model: backend ? backend.providers : []
+                delegate: RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
+                    Text { Layout.preferredWidth: 140; text: modelData.name || ""; font.pixelSize: 11; elide: Text.ElideRight }
+                    Text { Layout.preferredWidth: 64; text: modelData.supports_current ? "✓" : "—"; horizontalAlignment: Text.AlignHCenter; font.pixelSize: 12; color: modelData.supports_current ? "#2E9E5B" : "#999999" }
+                    Text { Layout.preferredWidth: 64; text: modelData.supports_tomorrow ? "✓" : "—"; horizontalAlignment: Text.AlignHCenter; font.pixelSize: 12; color: modelData.supports_tomorrow ? "#2E9E5B" : "#999999" }
+                    Text { Layout.preferredWidth: 64; text: modelData.supports_hourly ? "✓" : "—"; horizontalAlignment: Text.AlignHCenter; font.pixelSize: 12; color: modelData.supports_hourly ? "#2E9E5B" : "#999999" }
+                    Text { Layout.preferredWidth: 64; text: modelData.supports_precipitation ? "✓" : "—"; horizontalAlignment: Text.AlignHCenter; font.pixelSize: 12; color: modelData.supports_precipitation ? "#2E9E5B" : "#999999" }
+                    Text { Layout.preferredWidth: 64; text: modelData.supports_alerts ? "✓" : "—"; horizontalAlignment: Text.AlignHCenter; font.pixelSize: 12; color: modelData.supports_alerts ? "#2E9E5B" : "#999999" }
+                }
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // About
+    // ------------------------------------------------------------------
+
+    SettingExpander {
+        Layout.fillWidth: true
+        title: "关于"
+        description: "版本、仓库和致谢信息。"
+
+        SettingItem {
+            id: versionItem
+            title: "插件版本"
+            description: backend && backend.pluginVersion ? backend.pluginVersion : "未知"
+            clickable: true
+            onClicked: {
+                root.versionClicks += 1
+                if (root.versionClicks >= 10) {
+                    root.versionClicks = 0
+                    Qt.openUrlExternally("https://www.bilibili.com/video/BV1jE421A7qK")
+                }
+            }
+        }
+
+        SettingItem {
+            title: "插件仓库"
+            Text {
+                Layout.fillWidth: true
+                textFormat: Text.RichText
+                text: '<a href="https://github.com/Sweet-Potato-t/Better-Weather-for-CW2">https://github.com/Sweet-Potato-t/Better-Weather-for-CW2</a>'
+                color: "#0A5AD4"
+                onLinkActivated: Qt.openUrlExternally(link)
+            }
+        }
+
+        Text {
+            Layout.fillWidth: true
+            Layout.leftMargin: 18
+            Layout.rightMargin: 18
+            Layout.topMargin: 4
+            Layout.bottomMargin: 0
+            text: "此插件由Sweet_Potato使用Deepseek V4.1 Flash 1017编写，由口天一大化石提供独家Token支持"
+            wrapMode: Text.NoWrap
+            font.pixelSize: 10
+            color: Colors.proxy.textSecondaryColor
         }
     }
 

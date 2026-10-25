@@ -9,10 +9,8 @@ CWTheme.Widget {
     id: root
 
     padding: miniMode ? 16 : 24
-
-    // 天气屏幕切换频繁，禁止父级主题的宽高弹性动画，避免隐藏/显示时掉帧。
-    Behavior on implicitWidth { enabled: false }
-    Behavior on height { enabled: false }
+    readonly property int screenWidth: miniMode ? 132 : 212
+    implicitWidth: miniMode ? 164 : 260
 
     readonly property var cfg: backend && backend.settings ? backend.settings : ({})
     readonly property var payload: backend && backend.weather ? backend.weather : ({})
@@ -30,6 +28,31 @@ CWTheme.Widget {
         3, Number(cfg.widget_main_seconds || 8))
     readonly property int alertSeconds: Math.max(
         1, Number(cfg.cycle_interval || 3))
+    readonly property bool tomorrowEnabled: cfg.widget_tomorrow_enabled !== false
+    readonly property string tomorrowStart: cfg.widget_tomorrow_start || "20:00"
+    readonly property string tomorrowEnd: cfg.widget_tomorrow_end || "23:59"
+    readonly property var tomorrow: {
+        var list = payload && payload.daily ? payload.daily : []
+        for (var i = 0; i < list.length; i++) {
+            if (list[i] && list[i].is_today === false)
+                return list[i]
+        }
+        return list.length > 1 ? list[1] : ({})
+    }
+    property int clockTick: 0
+    readonly property bool tomorrowReady: {
+        var tick = clockTick
+        var startMatch = /^(\d{1,2}):(\d{2})$/.exec(tomorrowStart)
+        var endMatch = /^(\d{1,2}):(\d{2})$/.exec(tomorrowEnd)
+        if (!startMatch || !endMatch || !tomorrowEnabled || !tomorrow || !tomorrow.text)
+            return false
+        var now = new Date()
+        var current = now.getHours() * 60 + now.getMinutes()
+        var start = Number(startMatch[1]) * 60 + Number(startMatch[2])
+        var end = Number(endMatch[1]) * 60 + Number(endMatch[2])
+        return start <= end ? (current >= start && current < end)
+                            : (current >= start || current < end)
+    }
 
     property var screens: []
     property string screensKey: ""
@@ -42,18 +65,10 @@ CWTheme.Widget {
     readonly property int titlePx: miniMode ? 13 : 15
     readonly property int bodyPx: miniMode ? 10 : 11
     readonly property int temperaturePx: miniMode ? 26 : 34
-    readonly property real activeRowWidth: {
-        switch (shown.kind) {
-        case "alert": return alertRow.implicitWidth
-        case "hourly": return hourlyRow.implicitWidth
-        case "precip": return precipRow.implicitWidth
-        case "unavailable": return unavailableRow.implicitWidth
-        default: return mainRow.implicitWidth
-        }
-    }
     readonly property real activeRowHeight: {
         switch (shown.kind) {
         case "alert": return alertRow.implicitHeight
+        case "tomorrow": return tomorrowRow.implicitHeight
         case "hourly": return hourlyRow.implicitHeight
         case "precip": return precipRow.implicitHeight
         case "unavailable": return unavailableRow.implicitHeight
@@ -73,6 +88,16 @@ CWTheme.Widget {
         return list[shown.index] || ({})
     }
     readonly property var precipitation: {
+        var report = payload && payload.precipitation ? payload.precipitation : ({})
+        if (report && report.active === true) {
+            return {
+                active: true,
+                pop: Number(report.probability || 100),
+                hour: report.time || "",
+                icon: report.icon || "rain_light",
+                summary: report.summary || ""
+            }
+        }
         var maxPop = -1
         var next = ({})
         for (var i = 0; i < hourly.length; i++) {
@@ -103,6 +128,9 @@ CWTheme.Widget {
         case "alert":
             value = root.activeAlert.level_text || "天气预警"
             break
+        case "tomorrow":
+            value = "明日天气"
+            break
         case "hourly":
             value = "未来 3 小时"
             break
@@ -116,7 +144,7 @@ CWTheme.Widget {
             value = root.current.text || "天气"
         }
         value += root.headerSuffix()
-        return value.length > 36 ? value.substring(0, 35) + "…" : value
+        return value.length > 24 ? value.substring(0, 23) + "…" : value
     }
 
     actions: RowLayout {
@@ -138,6 +166,8 @@ CWTheme.Widget {
         } else if (carousel) {
             // 轮播开启时，主屏、小时预报、降水和预警都在同一个队列中。
             list.push({ kind: "main" })
+            if (tomorrowReady)
+                list.push({ kind: "tomorrow" })
             if (showHourly && hourly.length >= 3)
                 list.push({ kind: "hourly" })
             if (showPrecip && precipitation.active)
@@ -196,7 +226,7 @@ CWTheme.Widget {
             property: "opacity"
             from: 1
             to: 0
-            duration: 160
+            duration: 320
             easing.type: Easing.InOutQuad
         }
         ScriptAction {
@@ -210,7 +240,7 @@ CWTheme.Widget {
             property: "opacity"
             from: 0
             to: 1
-            duration: 220
+            duration: 480
             easing.type: Easing.OutCubic
         }
         ScriptAction {
@@ -229,6 +259,13 @@ CWTheme.Widget {
         onIntervalChanged: if (running) restart()
     }
 
+    Timer {
+        interval: 30000
+        running: true
+        repeat: true
+        onTriggered: root.clockTick += 1
+    }
+
     Connections {
         target: root.backend
         enabled: root.backend !== null && root.backend !== undefined
@@ -242,6 +279,7 @@ CWTheme.Widget {
     onAlertsChanged: buildScreens()
     onHourlyChanged: buildScreens()
     onBackendChanged: buildScreens()
+    onTomorrowReadyChanged: buildScreens()
     Component.onCompleted: buildScreens()
 
     TapHandler {
@@ -253,7 +291,7 @@ CWTheme.Widget {
     Item {
         id: contentBox
         anchors.centerIn: parent
-        width: root.activeRowWidth
+        width: root.screenWidth
         height: root.activeRowHeight
         opacity: 1
 
@@ -261,6 +299,7 @@ CWTheme.Widget {
         RowLayout {
             id: mainRow
             anchors.centerIn: parent
+            width: parent.width
             spacing: root.miniMode ? 8 : 10
             visible: root.shown.kind === "main"
             opacity: visible ? 1 : 0
@@ -293,6 +332,8 @@ CWTheme.Widget {
                 }
             }
 
+            Item { Layout.fillWidth: true }
+
             ColumnLayout {
                 visible: root.contentMode !== "high_low" && !root.miniMode
                 spacing: 0
@@ -312,10 +353,47 @@ CWTheme.Widget {
             }
         }
 
+        // 明日天气
+        RowLayout {
+            id: tomorrowRow
+            anchors.centerIn: parent
+            width: parent.width
+            spacing: 10
+            visible: root.shown.kind === "tomorrow"
+            opacity: visible ? 1 : 0
+
+            WeatherIcon {
+                box: root.iconSize
+                icon: root.tomorrow.icon || "unknown"
+            }
+
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: 1
+                Text {
+                    Layout.fillWidth: true
+                    text: "明日 " + (root.tomorrow.text || "天气")
+                    color: Theme.isDark() ? "#FFFFFF" : "#17171A"
+                    font.pixelSize: root.titlePx
+                    font.weight: 600
+                    elide: Text.ElideRight
+                }
+                Text {
+                    Layout.fillWidth: true
+                    text: "最高 " + (root.tomorrow.high_text || "--°")
+                        + "  最低 " + (root.tomorrow.low_text || "--°")
+                    color: Theme.isDark() ? "#D6D6DB" : "#4B4B52"
+                    font.pixelSize: root.bodyPx
+                    elide: Text.ElideRight
+                }
+            }
+        }
+
         // 未来 3 小时
         RowLayout {
             id: hourlyRow
             anchors.centerIn: parent
+            width: parent.width
             spacing: 4
             visible: root.shown.kind === "hourly"
             opacity: visible ? 1 : 0
@@ -361,6 +439,7 @@ CWTheme.Widget {
         RowLayout {
             id: alertRow
             anchors.centerIn: parent
+            width: parent.width
             spacing: root.miniMode ? 8 : 11
             visible: root.shown.kind === "alert"
             opacity: visible ? 1 : 0
@@ -377,23 +456,8 @@ CWTheme.Widget {
                 }
             }
 
-            Rectangle {
-                Layout.preferredWidth: levelLabel.implicitWidth + 12
-                Layout.preferredHeight: 21
-                radius: 5
-                color: root.activeSlide.color || "#E81123"
-                Text {
-                    id: levelLabel
-                    anchors.centerIn: parent
-                    text: root.activeSlide.value || "预警"
-                    color: "#FFFFFF"
-                    font.pixelSize: root.bodyPx
-                    font.weight: 600
-                }
-            }
-
             ColumnLayout {
-                Layout.preferredWidth: root.miniMode ? 130 : 170
+                Layout.preferredWidth: root.miniMode ? 78 : 104
                 spacing: 1
                 Text {
                     Layout.fillWidth: true
@@ -420,6 +484,7 @@ CWTheme.Widget {
         RowLayout {
             id: precipRow
             anchors.centerIn: parent
+            width: parent.width
             spacing: 10
             visible: root.shown.kind === "precip"
             opacity: visible ? 1 : 0
@@ -437,11 +502,11 @@ CWTheme.Widget {
             }
 
             ColumnLayout {
-                Layout.preferredWidth: root.miniMode ? 140 : 180
+                Layout.preferredWidth: root.miniMode ? 92 : 150
                 spacing: 0
                 Text {
                     Layout.fillWidth: true
-                    text: "未来 3 小时有降水可能"
+                    text: root.precipitation.summary || "未来 3 小时有降水可能"
                     color: Theme.isDark() ? "#FFFFFF" : "#17171A"
                     font.pixelSize: root.titlePx
                     font.weight: 600
@@ -449,8 +514,10 @@ CWTheme.Widget {
                 }
                 Text {
                     Layout.fillWidth: true
-                    text: "最高降水概率 " + root.precipitation.pop + "%"
-                        + (root.precipitation.hour ? " · " + root.precipitation.hour : "")
+                    text: root.precipitation.summary
+                        ? ("分钟级降水预报" + (root.precipitation.hour ? " · " + root.precipitation.hour : ""))
+                        : ("最高降水概率 " + root.precipitation.pop + "%"
+                            + (root.precipitation.hour ? " · " + root.precipitation.hour : ""))
                     color: Theme.isDark() ? "#D6D6DB" : "#4B4B52"
                     font.pixelSize: root.bodyPx
                     elide: Text.ElideRight
@@ -462,6 +529,7 @@ CWTheme.Widget {
         RowLayout {
             id: unavailableRow
             anchors.centerIn: parent
+            width: parent.width
             spacing: 10
             visible: root.shown.kind === "unavailable"
             opacity: visible ? 1 : 0
@@ -472,7 +540,7 @@ CWTheme.Widget {
             }
 
             ColumnLayout {
-                Layout.preferredWidth: root.miniMode ? 130 : 170
+                Layout.preferredWidth: root.miniMode ? 78 : 104
                 spacing: 1
                 Text {
                     Layout.fillWidth: true

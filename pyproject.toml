@@ -1,6 +1,6 @@
 [project]
 name = "better-weather-for-cw2"
-version = "1.2.1"
+version = "1.3.1"
 description = "Better Weather for CW2 — a multi-source weather widget plugin for Class Widgets 2."
 authors = [
     {name = "sweetpotato"},

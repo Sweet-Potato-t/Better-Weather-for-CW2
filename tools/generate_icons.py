@@ -92,7 +92,7 @@ def moon(draw: ImageDraw.ImageDraw, cx: float, cy: float, radius: float):
     )
 
 
-def cloud(draw: ImageDraw.ImageDraw, cx: float, cy: float, scale: float = 1.0, color="#F2F5FA", shadow="#C9D3E0"):
+def cloud(draw: ImageDraw.ImageDraw, cx: float, cy: float, scale: float = 1.0, color="#AFC2D9", shadow="#8299B5"):
     # A soft shadow under the white body.
     ellipse(
         draw,
@@ -175,10 +175,11 @@ def make_weather(name: str) -> None:
     elif name == "sunny_night":
         moon(draw, cx, cy, 112)
     elif name in ("cloudy", "overcast"):
-        dark = "#AEBACB" if name == "overcast" else "#C9D3E0"
-        cloud(draw, 235, 270, 0.92, color="#EDF2F9", shadow=dark)
         if name == "overcast":
-            cloud(draw, 295, 205, 0.68, color="#DCE4EF", shadow="#B6C2D2")
+            cloud(draw, 235, 270, 0.92, color="#93A9C2", shadow="#6F86A2")
+            cloud(draw, 295, 205, 0.68, color="#B4C6D8", shadow="#8CA2BB")
+        else:
+            cloud(draw, 256, 250, 1.02, color="#AFC2D9", shadow="#8299B5")
     elif name in ("partly_cloudy_day", "partly_cloudy_night"):
         if name.endswith("day"):
             sun(draw, 175, 190, 76)
@@ -202,8 +203,8 @@ def make_weather(name: str) -> None:
         rain(draw, 205, 245, 2, heavy=False)
         snowflake(draw, 315, 345, 32)
     elif name == "fog":
-        cloud(draw, 256, 225, 0.9, color="#DCE4EF", shadow="#B6C2D2")
-        lines(draw, 256, 315, 4, color="#C9D3E0", width=18)
+        cloud(draw, 256, 225, 0.9, color="#AFC2D9", shadow="#8299B5")
+        lines(draw, 256, 315, 4, color="#D5E0EC", width=18)
     elif name == "haze":
         sun(draw, 220, 190, 82, color="#F4C76B", rays=False)
         lines(draw, 265, 300, 4, color="#D8B77A", width=16)
@@ -225,9 +226,9 @@ def make_weather(name: str) -> None:
                 width=20,
             )
     else:  # unknown
-        ellipse(draw, (66, 66, 446, 446), "#C9D3E0")
-        draw.rounded_rectangle((205, 150, 307, 300), radius=26, fill="#F2F5FA")
-        ellipse(draw, (207, 315, 305, 413), "#F2F5FA")
+        ellipse(draw, (66, 66, 446, 446), "#8299B5")
+        draw.rounded_rectangle((205, 150, 307, 300), radius=26, fill="#E8EFF7")
+        ellipse(draw, (207, 315, 305, 413), "#E8EFF7")
     save(image, name)
 
 
@@ -241,19 +242,18 @@ def make_alert(name: str) -> None:
         cloud(draw, 256, 205, 1.02, color=color, shadow=color)
         rain(draw, 256, 225, 4, color=color, heavy=True)
     elif name == "alert_wind":
-        for index, y in enumerate((175, 255, 335)):
+        # Strong gust lines with debris make this different from fog/rain.
+        for index, y in enumerate((165, 250, 335)):
             draw.arc(
-                (60 - index * 10, y - 58, 420 + index * 10, y + 58),
+                (55 - index * 8, y - 58, 420 + index * 8, y + 58),
                 200,
-                340,
+                338,
                 fill=color,
-                width=20,
+                width=22,
             )
-            ellipse(
-                draw,
-                (400 + index * 10 - 17, y - 17, 400 + index * 10 + 17, y + 17),
-                color,
-            )
+            ellipse(draw, (392 + index * 8, y - 18, 428 + index * 8, y + 18), color)
+        for x, y, r in ((120, 120, 12), (390, 120, 9), (100, 405, 10), (330, 430, 13)):
+            ellipse(draw, (x - r, y - r, x + r, y + r), color)
     elif name == "alert_snow":
         for x, y, r in ((185, 165, 55), (330, 215, 44), (225, 345, 52), (350, 370, 32)):
             snowflake(draw, x, y, r, color=color)
@@ -276,6 +276,43 @@ def make_alert(name: str) -> None:
         cloud(draw, 256, 210, 0.98, color=color, shadow=color)
         for x, y, r in ((135, 330, 18), (215, 365, 13), (305, 340, 21), (380, 375, 12)):
             ellipse(draw, (x - r, y - r, x + r, y + r), color)
+    elif name == "alert_ice":
+        # Outline road + snowflake so the two shapes do not merge when white.
+        draw.rounded_rectangle((70, 330, 442, 405), radius=22, outline=color, width=12)
+        draw.line((95, 330, 160, 255, 210, 330), fill=color, width=12)
+        for x, y, r in ((180, 155, 42), (295, 195, 34), (350, 285, 27)):
+            snowflake(draw, x, y, r, color=color)
+    elif name == "alert_sandstorm":
+        # Diagonal dust streams plus particles, distinct from the wind arcs.
+        for index, offset in enumerate((0, 58, 116)):
+            draw.line((75 + offset, 390, 335 + offset, 105), fill=color, width=22)
+        for x, y, r in ((120, 145, 14), (245, 120, 10), (355, 185, 16), (160, 300, 12), (390, 340, 14)):
+            ellipse(draw, (x - r, y - r, x + r, y + r), color)
+    elif name == "alert_haze":
+        sun(draw, 230, 190, 82, color="#FFFFFF", rays=False)
+        for index, y in enumerate((300, 350, 400)):
+            draw.rounded_rectangle((70 + index * 20, y, 442 - index * 20, y + 20), radius=10, fill=color)
+    elif name == "alert_hail":
+        cloud(draw, 256, 205, 0.95, color=color, shadow=color)
+        for x, y, r in ((175, 340, 22), (256, 375, 24), (337, 340, 20)):
+            ellipse(draw, (x - r, y - r, x + r, y + r), color)
+            ellipse(draw, (x - r, y - r, x + r, y + r), color, outline="#8299B5", width=4)
+    elif name == "alert_heat":
+        sun(draw, 240, 185, 92, color=color, rays=True)
+        for x in (160, 240, 320):
+            for y in (330, 390):
+                draw.arc((x - 32, y - 18, x + 32, y + 18), 180, 360, fill=color, width=12)
+    elif name == "alert_cold":
+        snowflake(draw, 180, 190, 55, color=color)
+        draw.rounded_rectangle((300, 90, 380, 320), radius=30, fill=color)
+        ellipse(draw, (270, 285, 410, 425), color)
+        draw.rounded_rectangle((315, 120, 365, 320), radius=20, fill="#4DA3E8")
+    elif name == "alert_frost":
+        snowflake(draw, 256, 230, 110, color=color)
+        for angle in (30, 90, 150):
+            rad = math.radians(angle)
+            dx, dy = math.cos(rad) * 155, math.sin(rad) * 155
+            draw.line((256 - dx, 230 - dy, 256 + dx, 230 + dy), fill=color, width=12)
     elif name == "alert_typhoon":
         for index, r in enumerate((200, 145, 90)):
             draw.arc(
@@ -361,6 +398,13 @@ ALERT_ICONS = [
     "alert_dust",
     "alert_typhoon",
     "alert_drought",
+    "alert_ice",
+    "alert_sandstorm",
+    "alert_haze",
+    "alert_hail",
+    "alert_heat",
+    "alert_cold",
+    "alert_frost",
 ]
 
 

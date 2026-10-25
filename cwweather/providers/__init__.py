@@ -38,18 +38,35 @@ FREE_PROVIDER_IDS = [
 ]
 
 
+_CAPABILITIES = {
+    "open-meteo": {"current": True, "tomorrow": True, "hourly": True, "precipitation": True, "alerts": False},
+    "xiaomi": {"current": True, "tomorrow": True, "hourly": True, "precipitation": False, "alerts": True},
+    "wttr": {"current": True, "tomorrow": True, "hourly": True, "precipitation": True, "alerts": False},
+    "met-no": {"current": True, "tomorrow": True, "hourly": True, "precipitation": False, "alerts": True},
+    "qweather": {"current": True, "tomorrow": True, "hourly": True, "precipitation": True, "alerts": True},
+    "openweathermap": {"current": True, "tomorrow": True, "hourly": True, "precipitation": True, "alerts": True},
+    "weatherapi": {"current": True, "tomorrow": True, "hourly": True, "precipitation": True, "alerts": True},
+    "caiyun": {"current": True, "tomorrow": True, "hourly": False, "precipitation": False, "alerts": True},
+}
+
+
 def provider_catalog() -> List[Dict[str, object]]:
-    return [
-        {
+    result = []
+    for provider in PROVIDER_CLASSES:
+        caps = _CAPABILITIES.get(provider.id, {})
+        result.append({
             "id": provider.id,
             "name": provider.name,
             "needs_key": provider.needs_key,
+            "supports_current": caps.get("current", True),
+            "supports_tomorrow": caps.get("tomorrow", True),
+            "supports_hourly": caps.get("hourly", False),
+            "supports_precipitation": caps.get("precipitation", False),
             "supports_alerts": provider.supports_alerts,
             "description": provider.description,
             "key_label": _key_label(provider.id),
-        }
-        for provider in PROVIDER_CLASSES
-    ]
+        })
+    return result
 
 
 def _key_label(provider_id: str) -> str:

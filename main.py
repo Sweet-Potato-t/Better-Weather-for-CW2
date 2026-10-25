@@ -7,6 +7,7 @@ signals.  The widget and the settings page both use the same backend object.
 
 from __future__ import annotations
 
+import re
 import threading
 import time
 from typing import Any, Dict, List, Optional
@@ -20,7 +21,7 @@ from cwweather.config import WeatherConfig
 from cwweather.formatting import high_low_text, temp_text, unit_symbol
 from cwweather.models import WeatherSnapshot
 from cwweather.service import WeatherService
-from cwweather.util import short_time
+from cwweather.util import alert_time_text, short_time
 
 try:
     from loguru import logger  # type: ignore
@@ -41,6 +42,7 @@ _BOOL_FIELDS = {
     "widget_show_hourly",
     "widget_show_precip",
     "widget_carousel",
+    "widget_tomorrow_enabled",
 }
 _INT_FIELDS = {"refresh_interval", "cycle_interval", "timeout", "widget_main_seconds"}
 _FLOAT_FIELDS = {"manual_lat", "manual_lon"}
@@ -53,6 +55,8 @@ _STRING_FIELDS = {
     "manual_timezone",
     "temperature_unit",
     "widget_content_mode",
+    "widget_tomorrow_start",
+    "widget_tomorrow_end",
     "qweather_api_key",
     "qweather_host",
     "openweathermap_api_key",
@@ -135,6 +139,10 @@ class Plugin(CW2Plugin):
         if self.pid is None:
             logger.warning("Weather plugin is missing meta.id")
             return
+        logger.info(
+            "Better Weather loaded: id=%s version=%s source=%s",
+            self.pid, self.meta.get("version", "?"), getattr(self.config, "source", "?"),
+        )
 
         try:
             self.api.config.register_plugin_model(self.pid, self.config)
@@ -167,6 +175,7 @@ class Plugin(CW2Plugin):
         self._request_refresh()
 
     def on_unload(self) -> None:
+        logger.info("Better Weather unloading")
         self._alive = False
         try:
             if self._position_source is not None:
@@ -223,6 +232,10 @@ class Plugin(CW2Plugin):
 
     def _perform_refresh(self) -> None:
         config = self._service_config()
+        logger.info(
+            "Weather refresh started: source=%s auto_location=%s",
+            config.get("source"), config.get("auto_location", True),
+        )
         with self._state_lock:
             device = dict(self._device_location) if self._device_location else None
             force_ip = self._force_ip_next
@@ -233,6 +246,7 @@ class Plugin(CW2Plugin):
             )
         except Exception as exc:
             message = str(exc) or exc.__class__.__name__
+            logger.warning("Weather refresh failed: %s", message)
             if self._alive:
                 self._result_ready.emit(
                     {
@@ -243,6 +257,12 @@ class Plugin(CW2Plugin):
                     }
                 )
             return
+        logger.info(
+            "Weather refresh succeeded: provider=%s temp=%s daily=%d hourly=%d alerts=%d precip=%s",
+            snapshot.provider_name, snapshot.current_temp_c, len(snapshot.daily),
+            len(snapshot.hourly), len(snapshot.alerts),
+            bool((snapshot.precipitation or {}).get("active")),
+        )
         if self._alive:
             self._result_ready.emit(
                 {
@@ -310,7 +330,7 @@ class Plugin(CW2Plugin):
         if snapshot.alerts:
             slides = []
             for alert in snapshot.alerts:
-                meta_parts = [part for part in (alert.sender, short_time(alert.pub_time)) if part]
+                meta_parts = [part for part in (alert.sender, alert_time_text(alert.pub_time)) if part]
                 if alert.type and alert.level:
                     concise_title = f"{alert.type} {alert.level_text}".strip()
                 elif alert.type:
@@ -402,6 +422,7 @@ class Plugin(CW2Plugin):
             "daily": [],
             "hourly": [],
             "alerts": [],
+            "precipitation": {},
             "alert_count": 0,
             "unit": unit_symbol(str(getattr(self.config, "temperature_unit", "celsius"))),
             "updated_at": "",
@@ -465,18 +486,19 @@ class Plugin(CW2Plugin):
         return data
 
     def _migrate_secrets(self) -> None:
-        changed = False
+        changed = 0
         for field in SECRET_FIELDS:
             raw = str(getattr(self.config, field, "") or "").strip()
             if not raw or secret_store.is_protected(raw):
                 continue
             try:
                 setattr(self.config, field, secret_store.protect(raw))
-                changed = True
+                changed += 1
             except Exception:
                 logger.exception(f"Failed to encrypt {field}; leaving legacy value")
         if changed:
             self._save_config()
+            logger.info("Encrypted %d legacy API credential(s) with Windows DPAPI", changed)
 
     def _config_int(self, key: str, default: int, minimum: int, maximum: int) -> int:
         try:
@@ -488,6 +510,10 @@ class Plugin(CW2Plugin):
     @Property("QVariant", notify=configChanged)
     def settings(self) -> Dict[str, Any]:
         return self._config_snapshot()
+
+    @Property(str, constant=True)
+    def pluginVersion(self) -> str:
+        return str(self.meta.get("version") or "")
 
     @Property("QVariantList", notify=configChanged)
     def providers(self) -> List[Dict[str, object]]:
@@ -525,6 +551,10 @@ class Plugin(CW2Plugin):
             return
 
         self._save_config()
+        if key in SECRET_FIELDS:
+            logger.info("Weather setting updated: %s=<encrypted>", key)
+        else:
+            logger.info("Weather setting updated: %s=%r", key, coerced)
         self.configChanged.emit()
         self._after_config_change(key)
 
@@ -566,7 +596,11 @@ class Plugin(CW2Plugin):
         if key == "temperature_unit":
             return "fahrenheit" if text.lower().startswith("f") else "celsius"
         if key == "qweather_host":
-            return text or "devapi.qweather.com"
+            return text
+        if key in ("widget_tomorrow_start", "widget_tomorrow_end"):
+            if re.match(r"^(?:[01]\d|2[0-3]):[0-5]\d$", text):
+                return text
+            return "20:00" if key == "widget_tomorrow_start" else "23:59"
         return text
 
     def _after_config_change(self, key: str) -> None:
@@ -574,6 +608,8 @@ class Plugin(CW2Plugin):
             "cycle_interval", "animation_enabled", "show_location", "show_provider",
             "widget_content_mode", "widget_show_hourly", "widget_show_precip",
             "widget_carousel", "widget_main_seconds",
+            "widget_tomorrow_enabled", "widget_tomorrow_start",
+            "widget_tomorrow_end",
         ):
             return
         if key == "temperature_unit":

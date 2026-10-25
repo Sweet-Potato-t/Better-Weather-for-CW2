@@ -37,14 +37,20 @@ class MappingTests(unittest.TestCase):
     def test_provider_mappings(self):
         self.assertEqual(qweather_info("305")[0], "rain_light")
         self.assertEqual(qweather_info("150")[0], "sunny_night")
-        self.assertEqual(xiaomi_info("7")[0], "thunder")
+        self.assertEqual(xiaomi_info("4")[0], "thunder")
+        self.assertEqual(xiaomi_info("30"), ("dust", "扬沙"))
 
     def test_alert_presentation(self):
         self.assertEqual(normalize_alert_level("Orange"), "橙色")
         self.assertEqual(normalize_alert_color("红色"), "#E81123")
         self.assertEqual(alert_icon_key("暴雨", "暴雨橙色预警"), "alert_rain")
         self.assertEqual(alert_icon_key("大风"), "alert_wind")
+        self.assertEqual(alert_icon_key("道路结冰"), "alert_ice")
+        self.assertEqual(alert_icon_key("沙尘暴"), "alert_sandstorm")
+        self.assertEqual(alert_icon_key("扬沙"), "alert_sandstorm")
+        self.assertEqual(alert_icon_key("冰雹"), "alert_hail")
         self.assertEqual(alert_icon_key("未知"), "alert_generic")
+        self.assertEqual(xiaomi_info("30"), ("dust", "扬沙"))
 
 
 class IconAssetTests(unittest.TestCase):
@@ -55,6 +61,8 @@ class IconAssetTests(unittest.TestCase):
             "snow", "sleet", "fog", "haze", "wind", "dust", "typhoon", "unknown",
             "alert_generic", "alert_rain", "alert_wind", "alert_snow", "alert_temp",
             "alert_fog", "alert_thunder", "alert_dust", "alert_typhoon", "alert_drought",
+            "alert_ice", "alert_sandstorm", "alert_haze", "alert_hail", "alert_heat",
+            "alert_cold", "alert_frost",
         }
         icon_dir = ROOT / "assets" / "icons"
         for key in icon_keys:
@@ -190,7 +198,7 @@ class XiaomiParserTests(unittest.TestCase):
         payload = {
             "current": {
                 "temperature": {"value": "17"},
-                "weather": "7",
+                "weather": "4",
                 "pubTime": "2026-10-18T16:00:00+08:00",
                 "humidity": {"value": "60"},
             },
@@ -201,7 +209,7 @@ class XiaomiParserTests(unittest.TestCase):
                         {"from": "21", "to": "13"},
                     ]
                 },
-                "weather": {"value": [{"from": "7", "to": "0"}, {"from": "0", "to": "0"}]},
+                "weather": {"value": [{"from": "4", "to": "0"}, {"from": "0", "to": "0"}]},
                 "sunRiseSet": {"value": [{"from": "2026-10-18T06:00:00+08:00", "to": "2026-10-18T18:00:00+08:00"}]},
             },
             "alerts": [
@@ -257,8 +265,18 @@ class ApiRequestTests(unittest.TestCase):
                     "fxTime": "2026-10-23T19:00+08:00", "temp": "14", "icon": "101",
                     "text": "晴", "pop": "10",
                 }]}
-            if url.endswith("/v7/warning/now"):
-                return {"code": "200", "warning": []}
+            if "/weatheralert/v1/current/" in url:
+                return {"alerts": [{
+                    "id": "alert-1", "senderName": "气象台",
+                    "headline": "大风蓝色预警", "eventType": {"name": "大风", "code": "1006"},
+                    "color": {"code": "blue"}, "severity": "minor",
+                    "description": "预计阵风 7 级", "issuedTime": "2026-10-24T18:00+08:00",
+                    "effectiveTime": "2026-10-24T18:00+08:00",
+                    "expireTime": "2026-10-25T18:00+08:00",
+                }]}
+            if "/v7/minutely/5m" in url:
+                return {"code": "200", "summary": "20分钟后有雨",
+                        "minutely": [{"fxTime": "2026-10-24T19:00+08:00", "precip": "0.3", "type": "rain"}]}
             raise AssertionError(url)
 
         provider = QWeatherProvider()
@@ -271,6 +289,10 @@ class ApiRequestTests(unittest.TestCase):
         self.assertTrue(calls[0][0].startswith("https://abcxyz.qweatherapi.com/"))
         self.assertEqual(calls[0][2].get("X-QW-Api-Key"), "test-key")
         self.assertNotIn("key", calls[0][1])
+        self.assertEqual(len(snapshot.alerts), 1)
+        self.assertEqual(snapshot.alerts[0].icon, "alert_wind")
+        self.assertTrue(snapshot.precipitation.get("active"))
+        self.assertEqual(snapshot.precipitation.get("summary"), "20分钟后有雨")
 
     def test_caiyun_v26_endpoints_and_fields(self):
         calls = []

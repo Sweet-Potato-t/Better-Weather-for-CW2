@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from .mappings import alert_icon_key, normalize_alert_color, normalize_alert_level
-from .util import compact_text, iso_now, short_time, today_text, weekday_cn
+from .util import alert_time_text, compact_text, iso_now, short_time, today_text, weekday_cn
 
 
 @dataclass
@@ -131,6 +131,7 @@ class Alert:
             "sender": self.sender,
             "pub_time": self.pub_time,
             "pub_time_short": short_time(self.pub_time),
+            "pub_time_text": alert_time_text(self.pub_time),
             "start_time": self.start_time,
             "end_time": self.end_time,
             "source": self.source,
@@ -151,13 +152,15 @@ class DailyForecast:
     is_today: bool = False
 
     def to_dict(self, unit: str = "celsius") -> Dict[str, Any]:
-        from .formatting import convert_temp, unit_symbol
+        from .formatting import convert_temp, temp_text, unit_symbol
 
         return {
             "date": self.date,
             "weekday": "今天" if self.is_today else weekday_cn(self.date),
             "high": convert_temp(self.high_c, unit),
             "low": convert_temp(self.low_c, unit),
+            "high_text": temp_text(self.high_c, unit),
+            "low_text": temp_text(self.low_c, unit),
             "text": self.text,
             "icon": self.icon,
             "is_today": self.is_today,
@@ -213,6 +216,7 @@ class WeatherSnapshot:
     daily: List[DailyForecast] = field(default_factory=list)
     hourly: List[HourlyForecast] = field(default_factory=list)
     alerts: List[Alert] = field(default_factory=list)
+    precipitation: Dict[str, Any] = field(default_factory=dict)
     fetched_at: str = field(default_factory=iso_now)
     fallback_used: bool = False
     attempts: List[str] = field(default_factory=list)
@@ -285,6 +289,7 @@ class WeatherSnapshot:
             "hourly": [item.to_dict(unit) for item in self.hourly[:4] if item.time],
             "alerts": [alert.to_dict() for alert in self.alerts],
             "alert_count": len(self.alerts),
+            "precipitation": dict(self.precipitation or {}),
             "unit": unit_symbol(unit),
             "updated_at": self.fetched_at,
             "updated_text": short_time(self.fetched_at),

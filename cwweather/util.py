@@ -237,6 +237,15 @@ def parse_datetime(value: Any) -> Optional[datetime]:
     return result
 
 
+def alert_time_text(value: Any) -> str:
+    """Month/day + time for compact alert timestamps."""
+    parsed = parse_datetime(value)
+    if parsed is None:
+        text = str(value or "").strip()
+        return text
+    return f"{parsed.month}月{parsed.day}日 {parsed.strftime('%H:%M')}"
+
+
 def short_time(value: Any) -> str:
     dt = parse_datetime(value)
     if dt is None:

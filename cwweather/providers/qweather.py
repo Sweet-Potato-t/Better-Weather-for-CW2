@@ -6,8 +6,14 @@ from typing import Any, Dict, List
 
 from ..mappings import qweather_info
 from ..models import DailyForecast, HourlyForecast, Location, WeatherSnapshot
-from ..util import ProviderError, as_float, as_int, first
+from ..util import ProviderError, as_float, as_int, first, short_time
 from .base import WeatherProvider
+
+try:
+    from loguru import logger  # type: ignore
+except Exception:  # pragma: no cover
+    import logging
+    logger = logging.getLogger("classwidgets.weather")
 
 
 class QWeatherProvider(WeatherProvider):
@@ -48,7 +54,8 @@ class QWeatherProvider(WeatherProvider):
             daily_raw = (daily_payload or {}).get("daily") or []
 
         hourly = self._fetch_hourly(base, common, headers)
-        alerts = self._fetch_alerts(base, common, headers)
+        alerts = self._fetch_alerts(base, location, headers)
+        precipitation = self._fetch_precipitation(base, location, headers)
 
         icon_code = str(now.get("icon") or "")
         is_day = not icon_code.startswith("15")
@@ -103,6 +110,7 @@ class QWeatherProvider(WeatherProvider):
             daily=forecasts,
             hourly=hourly,
             alerts=alerts,
+            precipitation=precipitation,
         )
 
     def _fetch_hourly(self, base: str, common: Dict[str, Any], headers: Dict[str, str]) -> List[HourlyForecast]:
@@ -132,37 +140,86 @@ class QWeatherProvider(WeatherProvider):
                 break
         return result
 
-    def _fetch_alerts(self, base: str, common: Dict[str, Any], headers: Dict[str, str]) -> list:
+    def _fetch_alerts(self, base: str, location: Location, headers: Dict[str, str]) -> list:
+        url = (
+            f"{base}/weatheralert/v1/current/"
+            f"{location.latitude:.2f}/{location.longitude:.2f}"
+        )
         try:
-            payload = self._get_json(f"{base}/v7/warning/now", common, headers=headers)
-        except Exception:
+            payload = self._get_json(
+                url, {"localTime": "true", "lang": "zh"}, headers=headers
+            )
+        except Exception as exc:
+            logger.warning(f"QWeather warning request failed: {exc}")
             return []
-        if str((payload or {}).get("code")) != "200":
+        if not isinstance(payload, dict) or payload.get("error"):
+            logger.warning(f"QWeather warning response invalid: {str(payload)[:160]}")
             return []
-        warning_data = (payload or {}).get("warning") or []
-        if isinstance(warning_data, dict):
-            warning_data = [warning_data]
         raw = []
-        for item in warning_data:
+        for item in payload.get("alerts") or []:
             if not isinstance(item, dict):
                 continue
+            event = item.get("eventType") or {}
+            color = item.get("color") or {}
+            color_code = color.get("code") if isinstance(color, dict) else str(color or "")
+            description = str(item.get("description") or "")
+            instruction = str(item.get("instruction") or "")
+            if instruction and instruction not in description:
+                description = (description + "\n\n" + instruction).strip()
             raw.append(
                 {
                     "id": item.get("id"),
-                    "title": item.get("title"),
-                    "type": item.get("typeName") or item.get("type"),
-                    "level": item.get("severityColor") or item.get("level"),
+                    "title": item.get("headline"),
+                    "type": event.get("name") if isinstance(event, dict) else "",
+                    "level": color_code,
                     "severity": item.get("severity"),
-                    "description": item.get("text"),
-                    "sender": item.get("sender"),
-                    "pub_time": item.get("pubTime"),
-                    "start_time": item.get("startTime"),
-                    "end_time": item.get("endTime"),
+                    "description": description,
+                    "sender": item.get("senderName"),
+                    "pub_time": item.get("issuedTime"),
+                    "start_time": item.get("effectiveTime") or item.get("onsetTime"),
+                    "end_time": item.get("expireTime"),
                     "urgency": item.get("urgency"),
                     "certainty": item.get("certainty"),
                 }
             )
+        logger.info(f"QWeather warnings: {len(raw)}")
         return self._alerts(raw, self.id)
+
+    def _fetch_precipitation(
+        self, base: str, location: Location, headers: Dict[str, str]
+    ) -> Dict[str, Any]:
+        coords = f"{location.longitude:.2f},{location.latitude:.2f}"
+        try:
+            payload = self._get_json(
+                f"{base}/v7/minutely/5m",
+                {"location": coords, "lang": "zh"},
+                headers=headers,
+            )
+        except Exception as exc:
+            logger.warning(f"QWeather minutely request failed: {exc}")
+            return {}
+        if not isinstance(payload, dict) or str(payload.get("code")) != "200":
+            logger.warning(f"QWeather minutely response code: {payload.get('code') if isinstance(payload, dict) else '?'}")
+            return {}
+        rows = payload.get("minutely") or []
+        first_wet = None
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            if (as_float(row.get("precip")) or 0.0) > 0:
+                first_wet = row
+                break
+        if not first_wet:
+            return {"active": False, "summary": str(payload.get("summary") or "")}
+        kind = str(first_wet.get("type") or "rain")
+        return {
+            "active": True,
+            "summary": str(payload.get("summary") or ""),
+            "time": short_time(first_wet.get("fxTime")),
+            "type": kind,
+            "icon": "snow" if kind == "snow" else "rain_light",
+            "probability": 100,
+        }
 
 
 def _base_url(host: str) -> str:
