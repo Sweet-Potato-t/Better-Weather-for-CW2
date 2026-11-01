@@ -35,6 +35,12 @@ FluentPage {
     function providerKeyHint(providerId) {
         if (providerId === "qweather")
             return "在 dev.qweather.com 创建项目和 API Key，并从控制台设置页复制你的 API Host；公共域名已逐步停用。"
+        if (providerId === "amap")
+            return "在高德开放平台创建 Web 服务 Key；插件会先用坐标解析 adcode 再查询。"
+        if (providerId === "tencent")
+            return "在腾讯位置服务控制台创建 WebService Key；插件使用经纬度查询。"
+        if (providerId === "nmc")
+            return "中央气象台公开页面数据，无需 Key；仅支持中国大陆站点。"
         if (providerId === "openweathermap")
             return "需要 One Call 3.0 权限；免费账号可能需要单独订阅。"
         if (providerId === "weatherapi")
@@ -52,6 +58,8 @@ FluentPage {
     function keyHint(providerId) {
         var base = root.providerKeyHint(providerId)
         var field = providerId === "qweather" ? "qweather_api_key"
+            : providerId === "amap" ? "amap_api_key"
+            : providerId === "tencent" ? "tencent_api_key"
             : providerId === "openweathermap" ? "openweathermap_api_key"
             : providerId === "weatherapi" ? "weatherapi_api_key" : "caiyun_api_key"
         return cfg[field + "_set"] ? base + "（当前已加密保存）" : base
@@ -59,6 +67,8 @@ FluentPage {
 
     function keyPlaceholder(providerId) {
         var field = providerId === "qweather" ? "qweather_api_key"
+            : providerId === "amap" ? "amap_api_key"
+            : providerId === "tencent" ? "tencent_api_key"
             : providerId === "openweathermap" ? "openweathermap_api_key"
             : providerId === "weatherapi" ? "weatherapi_api_key" : "caiyun_api_key"
         return cfg[field + "_set"] ? "已加密保存，输入新值可替换" : "输入 " + providerId + " API Key"
@@ -69,8 +79,8 @@ FluentPage {
             return
         syncing = true
         providerCombo.currentIndex = backend.providerIndex
-        strategyCombo.currentIndex = Math.max(
-            0, ["auto", "ip", "device"].indexOf(cfg.location_strategy || "auto"))
+        deviceLocationSwitch.checked = cfg.device_location_enabled !== false
+        ipLocationSwitch.checked = cfg.ip_location_enabled !== false
         unitCombo.currentIndex = (cfg.temperature_unit === "fahrenheit") ? 1 : 0
         refreshSpin.value = Number(cfg.refresh_interval || 15)
         cycleSpin.value = Number(cfg.cycle_interval || 3)
@@ -89,9 +99,12 @@ FluentPage {
             tomorrowEndField.text = cfg.widget_tomorrow_end || "23:59"
         widgetPrecipSwitch.checked = cfg.widget_show_precip !== false
         widgetCarouselSwitch.checked = cfg.widget_carousel !== false
+        blankHiddenSwitch.checked = cfg.widget_blank_when_hidden !== false
         widgetSecondsSpin.value = Number(cfg.widget_main_seconds || 8)
         if (!qweatherKeyField.activeFocus) qweatherKeyField.text = ""
         if (!qweatherHostField.activeFocus) qweatherHostField.text = cfg.qweather_host || ""
+        if (!amapKeyField.activeFocus) amapKeyField.text = ""
+        if (!tencentKeyField.activeFocus) tencentKeyField.text = ""
         if (!owmKeyField.activeFocus) owmKeyField.text = ""
         if (!weatherApiKeyField.activeFocus) weatherApiKeyField.text = ""
         if (!caiyunKeyField.activeFocus) caiyunKeyField.text = ""
@@ -498,6 +511,46 @@ FluentPage {
         }
 
         SettingItem {
+            title: "高德天气 Web 服务 Key"
+            visible: root.currentProvider === "amap"
+            description: root.keyHint("amap")
+
+            TextField {
+                id: amapKeyField
+                Layout.preferredWidth: 300
+                placeholderText: root.keyPlaceholder("amap")
+                echoMode: TextInput.Password
+                selectByMouse: true
+                onEditingFinished: {
+                    if (backend && text.trim().length > 0) {
+                        backend.setOption("amap_api_key", text)
+                        text = ""
+                    }
+                }
+            }
+        }
+
+        SettingItem {
+            title: "腾讯位置服务 Key"
+            visible: root.currentProvider === "tencent"
+            description: root.keyHint("tencent")
+
+            TextField {
+                id: tencentKeyField
+                Layout.preferredWidth: 300
+                placeholderText: root.keyPlaceholder("tencent")
+                echoMode: TextInput.Password
+                selectByMouse: true
+                onEditingFinished: {
+                    if (backend && text.trim().length > 0) {
+                        backend.setOption("tencent_api_key", text)
+                        text = ""
+                    }
+                }
+            }
+        }
+
+        SettingItem {
             title: "OpenWeatherMap API Key"
             visible: root.currentProvider === "openweathermap"
             description: root.keyHint("openweathermap")
@@ -607,6 +660,38 @@ FluentPage {
                 onValueModified: if (!root.syncing && backend) backend.setOption("timeout", value)
             }
         }
+        ColumnLayout {
+            Layout.fillWidth: true
+            spacing: 4
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+                Text { Layout.preferredWidth: 140; text: "天气源"; font.pixelSize: 11; font.weight: 600; color: Colors.proxy.textSecondaryColor }
+                Text { Layout.preferredWidth: 64; text: "Key"; horizontalAlignment: Text.AlignHCenter; font.pixelSize: 11; font.weight: 600; color: Colors.proxy.textSecondaryColor }
+                Text { Layout.preferredWidth: 64; text: "当前"; horizontalAlignment: Text.AlignHCenter; font.pixelSize: 11; font.weight: 600; color: Colors.proxy.textSecondaryColor }
+                Text { Layout.preferredWidth: 64; text: "明日"; horizontalAlignment: Text.AlignHCenter; font.pixelSize: 11; font.weight: 600; color: Colors.proxy.textSecondaryColor }
+                Text { Layout.preferredWidth: 64; text: "3 小时"; horizontalAlignment: Text.AlignHCenter; font.pixelSize: 11; font.weight: 600; color: Colors.proxy.textSecondaryColor }
+                Text { Layout.preferredWidth: 64; text: "降水"; horizontalAlignment: Text.AlignHCenter; font.pixelSize: 11; font.weight: 600; color: Colors.proxy.textSecondaryColor }
+                Text { Layout.preferredWidth: 64; text: "预警"; horizontalAlignment: Text.AlignHCenter; font.pixelSize: 11; font.weight: 600; color: Colors.proxy.textSecondaryColor }
+            }
+
+            Repeater {
+                model: backend ? backend.providers : []
+                delegate: RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
+                    Text { Layout.preferredWidth: 140; text: modelData.name || ""; font.pixelSize: 11; elide: Text.ElideRight }
+                    Text { Layout.preferredWidth: 64; text: modelData.needs_key ? "需要" : "免 Key"; horizontalAlignment: Text.AlignHCenter; font.pixelSize: 11; color: modelData.needs_key ? "#B26A00" : "#2E9E5B" }
+                    Text { Layout.preferredWidth: 64; text: modelData.supports_current ? "✓" : "—"; horizontalAlignment: Text.AlignHCenter; font.pixelSize: 12; color: modelData.supports_current ? "#2E9E5B" : "#999999" }
+                    Text { Layout.preferredWidth: 64; text: modelData.supports_tomorrow ? "✓" : "—"; horizontalAlignment: Text.AlignHCenter; font.pixelSize: 12; color: modelData.supports_tomorrow ? "#2E9E5B" : "#999999" }
+                    Text { Layout.preferredWidth: 64; text: modelData.supports_hourly ? "✓" : "—"; horizontalAlignment: Text.AlignHCenter; font.pixelSize: 12; color: modelData.supports_hourly ? "#2E9E5B" : "#999999" }
+                    Text { Layout.preferredWidth: 64; text: modelData.supports_precipitation ? "✓" : "—"; horizontalAlignment: Text.AlignHCenter; font.pixelSize: 12; color: modelData.supports_precipitation ? "#2E9E5B" : "#999999" }
+                    Text { Layout.preferredWidth: 64; text: modelData.supports_alerts ? "✓" : "—"; horizontalAlignment: Text.AlignHCenter; font.pixelSize: 12; color: modelData.supports_alerts ? "#2E9E5B" : "#999999" }
+                }
+            }
+        }
+
     }
 
     // ------------------------------------------------------------------
@@ -620,7 +705,7 @@ FluentPage {
 
         SettingItem {
             title: "自动获取位置"
-            description: "设备定位不可用时自动回退到公网 IP。"
+            description: "总开关；设备定位和公网 IP 定位可分别启用。"
 
             Switch {
                 id: autoSwitch
@@ -629,19 +714,28 @@ FluentPage {
         }
 
         SettingItem {
-            title: "自动定位方式"
+            title: "设备定位"
             visible: cfg.auto_location !== false
-            description: "自动：优先设备定位，失败后使用公网 IP。"
+            description: "使用系统设备定位；失败时若公网 IP 定位开启会自动回退。"
 
-            ComboBox {
-                id: strategyCombo
-                Layout.preferredWidth: 210
-                model: ["自动（设备优先）", "仅公网 IP", "仅设备定位"]
-                currentIndex: Math.max(0, ["auto", "ip", "device"].indexOf(cfg.location_strategy || "auto"))
-                onActivated: {
-                    if (!backend) return
-                    backend.setOption("location_strategy", ["auto", "ip", "device"][index])
-                }
+            Switch {
+                id: deviceLocationSwitch
+                text: "设备定位"
+                onToggled: if (!root.syncing && backend)
+                    backend.setOption("device_location_enabled", checked)
+            }
+        }
+
+        SettingItem {
+            title: "公网 IP 定位"
+            visible: cfg.auto_location !== false
+            description: "通过公网 IP 估算城市；精度通常低于设备定位。"
+
+            Switch {
+                id: ipLocationSwitch
+                text: "公网 IP 定位"
+                onToggled: if (!root.syncing && backend)
+                    backend.setOption("ip_location_enabled", checked)
             }
         }
 
@@ -861,6 +955,17 @@ FluentPage {
         }
 
         SettingItem {
+            title: "隐藏时显示空白屏幕"
+            description: "小组件隐藏 5 秒后清空内容并停止轮播；重新显示时恢复天气和轮播。"
+
+            Switch {
+                id: blankHiddenSwitch
+                onToggled: if (!root.syncing && backend)
+                    backend.setOption("widget_blank_when_hidden", checked)
+            }
+        }
+
+        SettingItem {
             title: "主屏停留时长"
             description: "单位：秒。主屏与小时预报、降水提醒之间切换的间隔。"
 
@@ -877,7 +982,7 @@ FluentPage {
 
         SettingItem {
             title: "切换动画"
-            description: "在主屏、小时预报、降水提醒与预警之间使用淡入淡出过渡。"
+            description: "若内容切换时卡顿严重，请关闭此项。"
 
             Switch {
                 id: animationSwitch
@@ -931,46 +1036,6 @@ FluentPage {
                 onActivated: {
                     if (!backend) return
                     backend.setOption("temperature_unit", index === 1 ? "fahrenheit" : "celsius")
-                }
-            }
-        }
-    }
-
-    // ------------------------------------------------------------------
-    // Data source capabilities
-    // ------------------------------------------------------------------
-
-    SettingExpander {
-        Layout.fillWidth: true
-        title: "数据源能力"
-        description: "各天气源对插件功能的支持情况；✓ 支持，— 不支持或尚未接入。"
-
-        ColumnLayout {
-            Layout.fillWidth: true
-            spacing: 4
-
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 8
-                Text { Layout.preferredWidth: 140; text: "天气源"; font.pixelSize: 11; font.weight: 600; color: Colors.proxy.textSecondaryColor }
-                Text { Layout.preferredWidth: 64; text: "当前"; horizontalAlignment: Text.AlignHCenter; font.pixelSize: 11; font.weight: 600; color: Colors.proxy.textSecondaryColor }
-                Text { Layout.preferredWidth: 64; text: "明日"; horizontalAlignment: Text.AlignHCenter; font.pixelSize: 11; font.weight: 600; color: Colors.proxy.textSecondaryColor }
-                Text { Layout.preferredWidth: 64; text: "3 小时"; horizontalAlignment: Text.AlignHCenter; font.pixelSize: 11; font.weight: 600; color: Colors.proxy.textSecondaryColor }
-                Text { Layout.preferredWidth: 64; text: "降水"; horizontalAlignment: Text.AlignHCenter; font.pixelSize: 11; font.weight: 600; color: Colors.proxy.textSecondaryColor }
-                Text { Layout.preferredWidth: 64; text: "预警"; horizontalAlignment: Text.AlignHCenter; font.pixelSize: 11; font.weight: 600; color: Colors.proxy.textSecondaryColor }
-            }
-
-            Repeater {
-                model: backend ? backend.providers : []
-                delegate: RowLayout {
-                    Layout.fillWidth: true
-                    spacing: 8
-                    Text { Layout.preferredWidth: 140; text: modelData.name || ""; font.pixelSize: 11; elide: Text.ElideRight }
-                    Text { Layout.preferredWidth: 64; text: modelData.supports_current ? "✓" : "—"; horizontalAlignment: Text.AlignHCenter; font.pixelSize: 12; color: modelData.supports_current ? "#2E9E5B" : "#999999" }
-                    Text { Layout.preferredWidth: 64; text: modelData.supports_tomorrow ? "✓" : "—"; horizontalAlignment: Text.AlignHCenter; font.pixelSize: 12; color: modelData.supports_tomorrow ? "#2E9E5B" : "#999999" }
-                    Text { Layout.preferredWidth: 64; text: modelData.supports_hourly ? "✓" : "—"; horizontalAlignment: Text.AlignHCenter; font.pixelSize: 12; color: modelData.supports_hourly ? "#2E9E5B" : "#999999" }
-                    Text { Layout.preferredWidth: 64; text: modelData.supports_precipitation ? "✓" : "—"; horizontalAlignment: Text.AlignHCenter; font.pixelSize: 12; color: modelData.supports_precipitation ? "#2E9E5B" : "#999999" }
-                    Text { Layout.preferredWidth: 64; text: modelData.supports_alerts ? "✓" : "—"; horizontalAlignment: Text.AlignHCenter; font.pixelSize: 12; color: modelData.supports_alerts ? "#2E9E5B" : "#999999" }
                 }
             }
         }

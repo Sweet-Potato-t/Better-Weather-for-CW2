@@ -425,6 +425,63 @@ def _day_night_icon(icon: str, is_day: bool) -> str:
     return icon
 
 
+def weather_text_info(text: Any, is_day: bool = True) -> Tuple[str, str]:
+    """Map Chinese provider descriptions to the shared weather icon set."""
+    value = str(text or "").strip()
+    mapping = (
+        ("雷阵雨伴有冰雹", "thunder"),
+        ("雷阵雨", "thunder"),
+        ("雷暴", "thunder"),
+        ("强沙尘暴", "dust"),
+        ("沙尘暴", "dust"),
+        ("扬沙", "dust"),
+        ("浮尘", "dust"),
+        ("沙尘", "dust"),
+        ("严重霾", "haze"),
+        ("重度霾", "haze"),
+        ("中度霾", "haze"),
+        ("霾", "haze"),
+        ("强浓雾", "fog"),
+        ("特强浓雾", "fog"),
+        ("浓雾", "fog"),
+        ("大雾", "fog"),
+        ("轻雾", "fog"),
+        ("雾", "fog"),
+        ("雨夹雪", "sleet"),
+        ("冻雨", "sleet"),
+        ("特大暴雨", "rain_heavy"),
+        ("大暴雨", "rain_heavy"),
+        ("暴雨", "rain_heavy"),
+        ("大雨", "rain_heavy"),
+        ("中雨", "rain"),
+        ("小到中雨", "rain"),
+        ("中到大雨", "rain_heavy"),
+        ("大到暴雨", "rain_heavy"),
+        ("阵雨", "rain_light"),
+        ("小雨", "rain_light"),
+        ("雨", "rain"),
+        ("特大暴雪", "snow"),
+        ("暴雪", "snow"),
+        ("大雪", "snow"),
+        ("中雪", "snow"),
+        ("小雪", "snow"),
+        ("阵雪", "snow"),
+        ("吹雪", "snow"),
+        ("雪", "snow"),
+        ("晴", "sunny"),
+        ("多云", "partly_cloudy"),
+        ("阴", "overcast"),
+        ("大风", "wind"),
+        ("台风", "typhoon"),
+        ("龙卷", "typhoon"),
+        ("飑", "wind"),
+    )
+    for key, icon in mapping:
+        if key in value:
+            return _day_night_icon(icon, is_day), value or "未知天气"
+    return "unknown", value or "未知天气"
+
+
 # ---------------------------------------------------------------------------
 # Alert presentation
 # ---------------------------------------------------------------------------

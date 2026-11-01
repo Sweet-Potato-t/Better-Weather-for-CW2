@@ -60,6 +60,10 @@ class WeatherService:
         keyed: List[str] = []
         if str(config.get("qweather_api_key") or "").strip():
             keyed.append("qweather")
+        if str(config.get("amap_api_key") or "").strip():
+            keyed.append("amap")
+        if str(config.get("tencent_api_key") or "").strip():
+            keyed.append("tencent")
         if str(config.get("openweathermap_api_key") or "").strip():
             keyed.append("openweathermap")
         if str(config.get("weatherapi_api_key") or "").strip():

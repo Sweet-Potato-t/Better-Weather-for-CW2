@@ -31,7 +31,9 @@ class WeatherConfig(ConfigBaseModel):
 
     # Location
     auto_location: bool = True
-    location_strategy: str = "auto"     # auto | ip | device
+    location_strategy: str = "auto"     # legacy compatibility
+    device_location_enabled: bool = True
+    ip_location_enabled: bool = True
     manual_city: str = "北京市"
     manual_lat: float = 39.9042
     manual_lon: float = 116.4074
@@ -47,6 +49,7 @@ class WeatherConfig(ConfigBaseModel):
     widget_show_precip: bool = True
     widget_carousel: bool = True
     widget_main_seconds: int = 8
+    widget_blank_when_hidden: bool = True
     widget_tomorrow_enabled: bool = True
     widget_tomorrow_start: str = "20:00"
     widget_tomorrow_end: str = "23:59"
@@ -54,6 +57,8 @@ class WeatherConfig(ConfigBaseModel):
     # Keys for providers that need one
     qweather_api_key: str = ""
     qweather_host: str = ""
+    amap_api_key: str = ""
+    tencent_api_key: str = ""
     openweathermap_api_key: str = ""
     weatherapi_api_key: str = ""
     caiyun_api_key: str = ""

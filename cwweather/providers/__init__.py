@@ -9,7 +9,10 @@ from __future__ import annotations
 from typing import Dict, List, Type
 
 from .base import WeatherProvider
+from .amap import AmapProvider
 from .caiyun import CaiyunProvider
+from .nmc import NmcProvider
+from .tencent import TencentProvider
 from .met_no import MetNoProvider
 from .open_meteo import OpenMeteoProvider
 from .openweathermap import OpenWeatherMapProvider
@@ -21,9 +24,12 @@ from .xiaomi import XiaomiProvider
 PROVIDER_CLASSES: List[Type[WeatherProvider]] = [
     OpenMeteoProvider,
     XiaomiProvider,
+    NmcProvider,
     WttrProvider,
     MetNoProvider,
     QWeatherProvider,
+    AmapProvider,
+    TencentProvider,
     OpenWeatherMapProvider,
     WeatherApiProvider,
     CaiyunProvider,
@@ -41,9 +47,12 @@ FREE_PROVIDER_IDS = [
 _CAPABILITIES = {
     "open-meteo": {"current": True, "tomorrow": True, "hourly": True, "precipitation": True, "alerts": False},
     "xiaomi": {"current": True, "tomorrow": True, "hourly": True, "precipitation": False, "alerts": True},
+    "nmc": {"current": True, "tomorrow": True, "hourly": False, "precipitation": False, "alerts": True},
     "wttr": {"current": True, "tomorrow": True, "hourly": True, "precipitation": True, "alerts": False},
     "met-no": {"current": True, "tomorrow": True, "hourly": True, "precipitation": False, "alerts": True},
     "qweather": {"current": True, "tomorrow": True, "hourly": True, "precipitation": True, "alerts": True},
+    "amap": {"current": True, "tomorrow": True, "hourly": False, "precipitation": False, "alerts": False},
+    "tencent": {"current": True, "tomorrow": True, "hourly": True, "precipitation": False, "alerts": True},
     "openweathermap": {"current": True, "tomorrow": True, "hourly": True, "precipitation": True, "alerts": True},
     "weatherapi": {"current": True, "tomorrow": True, "hourly": True, "precipitation": True, "alerts": True},
     "caiyun": {"current": True, "tomorrow": True, "hourly": False, "precipitation": False, "alerts": True},
@@ -72,6 +81,8 @@ def provider_catalog() -> List[Dict[str, object]]:
 def _key_label(provider_id: str) -> str:
     return {
         "qweather": "和风天气 API Key",
+        "amap": "高德 Web 服务 Key",
+        "tencent": "腾讯位置服务 Key",
         "openweathermap": "OpenWeatherMap API Key",
         "weatherapi": "WeatherAPI Key",
         "caiyun": "彩云天气 Token",

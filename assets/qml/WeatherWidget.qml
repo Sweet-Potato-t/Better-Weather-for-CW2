@@ -18,12 +18,36 @@ CWTheme.Widget {
     readonly property var today: payload && payload.today ? payload.today : ({})
     readonly property var alerts: backend ? backend.alerts : []
     readonly property var hourly: payload && payload.hourly ? payload.hourly : []
-    readonly property bool available: backend ? backend.hasWeather : false
+    readonly property var precipitation: payload && payload.precipitation ? payload.precipitation : ({})
+    readonly property var activeAlert: {
+        var list = alerts || []
+        if (list.length === 0)
+            return ({})
+        var index = Math.max(0, Math.min(Number(shown.index) || 0, list.length - 1))
+        return list[index] || ({})
+    }
+    readonly property var activeSlide: {
+        if (shown.kind === "alert")
+            return activeAlert
+        if (shown.kind === "precip")
+            return precipitation
+        if (shown.kind === "hourly" && hourly.length > 0)
+            return hourly[Math.max(0, Math.min(Number(shown.index) || 0, hourly.length - 1))]
+        if (shown.kind === "tomorrow")
+            return tomorrow
+        return current
+    }
+    readonly property bool available: backend
+        ? (backend.hasWeather === true
+            || (payload && payload.available === true)
+            || (current && current.temp !== undefined && current.temp !== null))
+        : false
     readonly property bool animationsEnabled: cfg.animation_enabled !== false
     readonly property string contentMode: cfg.widget_content_mode || "current"
     readonly property bool carousel: cfg.widget_carousel !== false
     readonly property bool showHourly: cfg.widget_show_hourly !== false
     readonly property bool showPrecip: cfg.widget_show_precip !== false
+    readonly property bool blankWhenHidden: cfg.widget_blank_when_hidden !== false
     readonly property int mainSeconds: Math.max(
         3, Number(cfg.widget_main_seconds || 8))
     readonly property int alertSeconds: Math.max(
@@ -60,58 +84,12 @@ CWTheme.Widget {
     property var shown: ({ kind: "unavailable" })
     property var pending: ({})
     property bool swapping: false
+    property bool blanked: false
 
     readonly property int iconSize: miniMode ? 24 : 32
     readonly property int titlePx: miniMode ? 13 : 15
     readonly property int bodyPx: miniMode ? 10 : 11
     readonly property int temperaturePx: miniMode ? 26 : 34
-    readonly property real activeRowHeight: {
-        switch (shown.kind) {
-        case "alert": return alertRow.implicitHeight
-        case "tomorrow": return tomorrowRow.implicitHeight
-        case "hourly": return hourlyRow.implicitHeight
-        case "precip": return precipRow.implicitHeight
-        case "unavailable": return unavailableRow.implicitHeight
-        default: return mainRow.implicitHeight
-        }
-    }
-    readonly property bool hasAlert: alerts.length > 0
-    readonly property var activeAlert: {
-        if (shown.kind !== "alert")
-            return ({})
-        return alerts[shown.index] || ({})
-    }
-    readonly property var activeSlide: {
-        if (shown.kind !== "alert" || !backend)
-            return ({})
-        var list = backend.slides || []
-        return list[shown.index] || ({})
-    }
-    readonly property var precipitation: {
-        var report = payload && payload.precipitation ? payload.precipitation : ({})
-        if (report && report.active === true) {
-            return {
-                active: true,
-                pop: Number(report.probability || 100),
-                hour: report.time || "",
-                icon: report.icon || "rain_light",
-                summary: report.summary || ""
-            }
-        }
-        var maxPop = -1
-        var next = ({})
-        for (var i = 0; i < hourly.length; i++) {
-            var item = hourly[i] || ({})
-            var pop = Number(item.pop)
-            if (!isNaN(pop) && pop > maxPop) {
-                maxPop = pop
-                next = item
-            }
-        }
-        if (maxPop >= 40)
-            return { active: true, pop: maxPop, hour: next.hour || "", icon: next.icon || "rain_light" }
-        return { active: false, pop: 0, hour: "", icon: "rain_light" }
-    }
     function headerSuffix() {
         var parts = []
         if (cfg.show_location !== false && backend && backend.locationText)
@@ -123,6 +101,8 @@ CWTheme.Widget {
     }
 
     text: {
+        if (root.blanked && root.blankWhenHidden)
+            return ""
         var value = ""
         switch (shown.kind) {
         case "alert":
@@ -150,8 +130,17 @@ CWTheme.Widget {
     actions: RowLayout {
         spacing: 6
 
+        WeatherIcon {
+            box: 18
+            icon: root.alerts.length > 0
+                ? (root.alerts[0].icon || "alert_generic")
+                : (root.precipitation.icon || "rain_light")
+            visible: !root.blanked && root.shown.kind === "main"
+                && (root.alerts.length > 0 || root.precipitation.active)
+        }
+
         Text {
-            visible: root.shown.kind === "alert" && root.alerts.length > 1
+            visible: !root.blanked && root.shown.kind === "alert" && root.alerts.length > 1
             text: (root.shown.index + 1) + "/" + root.alerts.length
             font.pixelSize: root.bodyPx
             opacity: 0.65
@@ -161,7 +150,9 @@ CWTheme.Widget {
 
     function buildScreens() {
         var list = []
-        if (!available) {
+        if (blanked && blankWhenHidden) {
+            list = [{ kind: "blank" }]
+        } else if (!available) {
             list = [{ kind: "unavailable" }]
         } else if (carousel) {
             // 轮播开启时，主屏、小时预报、降水和预警都在同一个队列中。
@@ -187,7 +178,8 @@ CWTheme.Widget {
         screensKey = key
         screens = list
         screenIndex = 0
-        var animate = animationsEnabled && shown.kind !== "unavailable"
+        var force = (blanked && blankWhenHidden) || shown.kind === "blank"
+        var animate = animationsEnabled && shown.kind !== "unavailable" && !force
         showScreen(list[0], animate)
         if (list.length > 1)
             rotator.restart()
@@ -199,6 +191,9 @@ CWTheme.Widget {
         if (!next)
             return
         if (!animate || !animationsEnabled) {
+            swapAnim.stop()
+            swapping = false
+            pending = next
             shown = next
             contentBox.opacity = 1
             return
@@ -246,11 +241,19 @@ CWTheme.Widget {
         ScriptAction {
             script: root.swapping = false
         }
+        onFinished: {
+            if (root.pending && (root.pending.kind !== root.shown.kind
+                    || root.pending.index !== root.shown.index)) {
+                root.shown = root.pending
+            }
+            contentBox.opacity = 1
+            root.swapping = false
+        }
     }
 
     Timer {
         id: rotator
-        running: root.screens.length > 1 && !root.editMode
+        running: root.screens.length > 1 && !root.editMode && !root.blanked
         repeat: true
         interval: root.shown.kind === "alert"
             ? root.alertSeconds * 1000
@@ -260,10 +263,54 @@ CWTheme.Widget {
     }
 
     Timer {
+        id: stateWatchdog
+        interval: 1000
+        repeat: true
+        running: true
+        onTriggered: {
+            if (root.editMode || root.blanked)
+                return
+            if (root.available && (root.shown.kind === "unavailable" || root.shown.kind === "blank")) {
+                root.buildScreens()
+            } else if (!root.available && root.shown.kind !== "unavailable") {
+                root.buildScreens()
+            }
+        }
+    }
+
+    Timer {
         interval: 30000
         running: true
         repeat: true
         onTriggered: root.clockTick += 1
+    }
+
+    Timer {
+        id: hideTimer
+        interval: 5000
+        running: root.hide
+        repeat: false
+        onTriggered: {
+            if (root.hide && root.blankWhenHidden)
+                root.blanked = true
+        }
+    }
+
+    onHideChanged: {
+        if (!root.hide) {
+            root.blanked = false
+        } else if (!root.blankWhenHidden) {
+            root.blanked = false
+        }
+    }
+
+    onBlankedChanged: buildScreens()
+    onBlankWhenHiddenChanged: {
+        if (!root.blankWhenHidden) {
+            root.blanked = false
+        } else if (root.hide) {
+            hideTimer.restart()
+        }
     }
 
     Connections {
@@ -278,6 +325,7 @@ CWTheme.Widget {
     onAvailableChanged: buildScreens()
     onAlertsChanged: buildScreens()
     onHourlyChanged: buildScreens()
+    onPayloadChanged: buildScreens()
     onBackendChanged: buildScreens()
     onTomorrowReadyChanged: buildScreens()
     Component.onCompleted: buildScreens()
@@ -294,6 +342,7 @@ CWTheme.Widget {
         width: root.screenWidth
         height: root.activeRowHeight
         opacity: 1
+        visible: !(root.blanked && root.blankWhenHidden)
 
         // 主体：天气图标 + 温度 / 高低温
         RowLayout {
@@ -523,6 +572,14 @@ CWTheme.Widget {
                     elide: Text.ElideRight
                 }
             }
+        }
+
+        // 隐藏后等待 5 秒的空白屏幕
+        Item {
+            id: blankScreen
+            visible: root.shown.kind === "blank"
+            width: 1
+            height: 1
         }
 
         // 不可用

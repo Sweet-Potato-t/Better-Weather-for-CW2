@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, Dict, List
 
 from ..mappings import qweather_info
@@ -32,60 +33,63 @@ class QWeatherProvider(WeatherProvider):
         if not host:
             raise ProviderError("请先在插件设置中填写和风天气 API Host")
         base = _base_url(host)
-        coords = f"{location.longitude:.2f},{location.latitude:.2f}"
-        common = {"location": coords, "lang": "zh", "unit": "m"}
         headers = (
             {"Authorization": f"Bearer {key}"}
             if key.count(".") == 2
             else {"X-QW-Api-Key": key}
         )
-
-        now_payload = self._get_json(f"{base}/v7/weather/now", common, headers=headers)
-        if str((now_payload or {}).get("code")) != "200":
-            raise ProviderError(f"和风天气当前天气请求失败（code {now_payload.get('code')}）")
-        now = (now_payload or {}).get("now") or {}
-        temp = as_float(now.get("temp"))
+        lat, lon = location.latitude, location.longitude
+        current_payload = self._get_json(
+            f"{base}/weather/v1/current/{lat:.2f}/{lon:.2f}",
+            {"localTime": "true", "lang": "zh"},
+            headers=headers,
+        )
+        if not isinstance(current_payload, dict) or current_payload.get("error"):
+            raise ProviderError(f"和风天气实时天气请求失败：{str(current_payload)[:160]}")
+        temp = as_float((current_payload.get("temperature") or {}).get("value"))
         if temp is None:
             raise ProviderError("和风天气未返回当前温度")
 
-        daily_payload = self._get_json(f"{base}/v7/weather/3d", common, headers=headers)
-        daily_raw: List[Dict[str, Any]] = []
-        if str((daily_payload or {}).get("code")) == "200":
-            daily_raw = (daily_payload or {}).get("daily") or []
-
-        hourly = self._fetch_hourly(base, common, headers)
+        daily_payload = self._get_json(
+            f"{base}/weather/v1/daily/{lat:.2f}/{lon:.2f}",
+            {"days": "4", "localTime": "true", "lang": "zh"},
+            headers=headers,
+        )
+        days = (daily_payload or {}).get("days") or []
+        hourly = self._fetch_hourly(base, location, headers)
         alerts = self._fetch_alerts(base, location, headers)
         precipitation = self._fetch_precipitation(base, location, headers)
 
-        icon_code = str(now.get("icon") or "")
-        is_day = not icon_code.startswith("15")
-        icon, text = qweather_info(icon_code, str(now.get("text") or ""), is_day)
+        condition = current_payload.get("condition") or {}
+        icon_code = str(condition.get("code") or "")
+        weather_text = str(condition.get("text") or "")
+        is_day = 6 <= datetime.now().hour < 18
+        icon, text = qweather_info(icon_code, weather_text, is_day)
 
         forecasts: List[DailyForecast] = []
-        for index, item in enumerate(daily_raw[:4]):
+        for index, item in enumerate(days[:4]):
             if not isinstance(item, dict):
                 continue
+            day = item.get("daytime") or {}
+            day_condition = day.get("condition") or {}
             day_icon, day_text = qweather_info(
-                item.get("iconDay"), str(item.get("textDay") or ""), True
+                day_condition.get("code"), str(day_condition.get("text") or ""), True
             )
-            forecasts.append(
-                DailyForecast(
-                    date=str(item.get("fxDate") or ""),
-                    high_c=as_float(item.get("tempMax")),
-                    low_c=as_float(item.get("tempMin")),
-                    text=day_text,
-                    icon=day_icon,
-                    is_today=index == 0,
-                )
-            )
+            date = str(item.get("forecastStartTime") or "").split("T")[0]
+            high = as_float((item.get("temperatureMax") or {}).get("value"))
+            low = as_float((item.get("temperatureMin") or {}).get("value"))
+            forecasts.append(DailyForecast(
+                date=date, high_c=high, low_c=low,
+                text=day_text, icon=day_icon, is_today=index == 0,
+            ))
 
-        first_day = first(daily_raw) or {}
-        high = as_float(first_day.get("tempMax"))
-        low = as_float(first_day.get("tempMin"))
-        if forecasts:
-            high = forecasts[0].high_c
-            low = forecasts[0].low_c
-
+        first_day = first(forecasts)
+        first_raw = first(days) or {}
+        astro = first_raw.get("astro") or {}
+        wind = current_payload.get("wind") or {}
+        wind_dir = wind.get("direction") or {}
+        pressure = current_payload.get("pressure") or {}
+        visibility = current_payload.get("visibility") or {}
         return WeatherSnapshot(
             provider_id=self.id,
             provider_name=self.name,
@@ -94,48 +98,54 @@ class QWeatherProvider(WeatherProvider):
             condition=text,
             icon=icon,
             code=icon_code,
-            feels_like_c=as_float(now.get("feelsLike")),
+            feels_like_c=as_float((current_payload.get("feelsLike") or {}).get("value")),
             is_day=is_day,
-            high_c=high,
-            low_c=low,
-            humidity=as_int(now.get("humidity")),
-            wind_dir=str(now.get("windDir") or ""),
-            wind_scale=f"{now.get('windScale')}级" if now.get("windScale") else "",
-            wind_speed_kmh=as_float(now.get("windSpeed")),
-            pressure_hpa=as_float(now.get("pressure")),
-            visibility_km=as_float(now.get("vis")),
-            obs_time=str(now.get("obsTime") or ""),
-            sunrise=str(first_day.get("sunrise") or ""),
-            sunset=str(first_day.get("sunset") or ""),
+            high_c=first_day.high_c if first_day else None,
+            low_c=first_day.low_c if first_day else None,
+            humidity=as_int(as_float(current_payload.get("humidity")) * 100)
+                if current_payload.get("humidity") is not None else None,
+            wind_dir=_compass_zh(str(wind_dir.get("compass") or "")),
+            wind_scale=(str(wind.get("scale")) + "级") if wind.get("scale") is not None else "",
+            wind_speed_kmh=as_float((wind.get("speed") or {}).get("value")) * 3.6
+                if (wind.get("speed") or {}).get("value") is not None else None,
+            pressure_hpa=as_float(pressure.get("value")),
+            visibility_km=as_float(visibility.get("value")) / 1000.0
+                if visibility.get("value") is not None else None,
+            obs_time=str(current_payload.get("time") or ""),
+            sunrise=str(astro.get("sunrise") or ""),
+            sunset=str(astro.get("sunset") or ""),
             daily=forecasts,
             hourly=hourly,
             alerts=alerts,
             precipitation=precipitation,
         )
 
-    def _fetch_hourly(self, base: str, common: Dict[str, Any], headers: Dict[str, str]) -> List[HourlyForecast]:
+    def _fetch_hourly(self, base: str, location: Location, headers: Dict[str, str]) -> List[HourlyForecast]:
         try:
-            payload = self._get_json(f"{base}/v7/weather/24h", common, headers=headers)
-        except Exception:
-            return []
-        if str((payload or {}).get("code")) != "200":
+            payload = self._get_json(
+                f"{base}/weather/v1/hourly/{location.latitude:.2f}/{location.longitude:.2f}",
+                {"hours": "24", "localTime": "true", "lang": "zh"},
+                headers=headers,
+            )
+        except Exception as exc:
+            logger.warning(f"QWeather hourly request failed: {exc}")
             return []
         result: List[HourlyForecast] = []
-        for item in (payload or {}).get("hourly") or []:
+        for item in (payload or {}).get("hours") or []:
             if not isinstance(item, dict):
                 continue
-            code = str(item.get("icon") or "")
-            is_day = not code.startswith("15")
-            icon, text = qweather_info(code, str(item.get("text") or ""), is_day)
-            result.append(
-                HourlyForecast(
-                    time=str(item.get("fxTime") or ""),
-                    temp_c=as_float(item.get("temp")),
-                    icon=icon,
-                    text=text,
-                    pop=as_int(item.get("pop")),
-                )
+            condition = item.get("condition") or {}
+            icon, text = qweather_info(
+                condition.get("code"), str(condition.get("text") or ""), True
             )
+            precipitation = item.get("precipitation") or {}
+            probability = as_float(precipitation.get("probability"))
+            result.append(HourlyForecast(
+                time=str(item.get("forecastTime") or ""),
+                temp_c=as_float((item.get("temperature") or {}).get("value")),
+                icon=icon, text=text,
+                pop=as_int(probability * 100) if probability is not None else None,
+            ))
             if len(result) >= 4:
                 break
         return result
@@ -220,6 +230,19 @@ class QWeatherProvider(WeatherProvider):
             "icon": "snow" if kind == "snow" else "rain_light",
             "probability": 100,
         }
+
+
+_COMPASS = {
+    "n": "北风", "nne": "东北偏北风", "ne": "东北风", "ene": "东北偏东风",
+    "e": "东风", "ese": "东南偏东风", "se": "东南风", "sse": "东南偏南风",
+    "s": "南风", "ssw": "西南偏南风", "sw": "西南风", "wsw": "西南偏西风",
+    "w": "西风", "wnw": "西北偏西风", "nw": "西北风", "nnw": "西北偏北风",
+    "none": "", "vrb": "风向不定",
+}
+
+
+def _compass_zh(value: str) -> str:
+    return _COMPASS.get(str(value or "").lower(), value or "")
 
 
 def _base_url(host: str) -> str:

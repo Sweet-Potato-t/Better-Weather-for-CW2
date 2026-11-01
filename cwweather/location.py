@@ -38,13 +38,19 @@ class LocationService:
             return self.manual_location(config)
 
         strategy = str(config.get("location_strategy") or "auto").lower()
-        if device_location and strategy in ("auto", "device"):
+        device_enabled = bool(config.get(
+            "device_location_enabled", strategy in ("auto", "device")))
+        ip_enabled = bool(config.get(
+            "ip_location_enabled", strategy in ("auto", "ip")))
+        if device_location and device_enabled:
             location = self._from_device(device_location)
             if location is not None:
                 return location
-
-        # "device" falls back to IP after the plugin's positioning timeout.
-        return self.ip_location(force=force_ip)
+        if ip_enabled:
+            return self.ip_location(force=force_ip)
+        if device_enabled:
+            raise LocationError("设备定位不可用，且公网 IP 定位已关闭")
+        return self.manual_location(config)
 
     def manual_location(self, config: Dict[str, Any]) -> Location:
         latitude = as_float(config.get("manual_lat"), 39.9042) or 39.9042

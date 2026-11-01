@@ -39,9 +39,12 @@ _BOOL_FIELDS = {
     "auto_location",
     "show_location",
     "show_provider",
+    "device_location_enabled",
+    "ip_location_enabled",
     "widget_show_hourly",
     "widget_show_precip",
     "widget_carousel",
+    "widget_blank_when_hidden",
     "widget_tomorrow_enabled",
 }
 _INT_FIELDS = {"refresh_interval", "cycle_interval", "timeout", "widget_main_seconds"}
@@ -59,6 +62,8 @@ _STRING_FIELDS = {
     "widget_tomorrow_end",
     "qweather_api_key",
     "qweather_host",
+    "amap_api_key",
+    "tencent_api_key",
     "openweathermap_api_key",
     "weatherapi_api_key",
     "caiyun_api_key",
@@ -66,6 +71,8 @@ _STRING_FIELDS = {
 _FIELDS = _BOOL_FIELDS | _INT_FIELDS | _FLOAT_FIELDS | _STRING_FIELDS
 SECRET_FIELDS = {
     "qweather_api_key",
+    "amap_api_key",
+    "tencent_api_key",
     "openweathermap_api_key",
     "weatherapi_api_key",
     "caiyun_api_key",
@@ -626,7 +633,7 @@ class Plugin(CW2Plugin):
                 self._next_refresh = time.monotonic() + interval * 60.0
             self._wake_event.set()
             return
-        if key in ("auto_location", "location_strategy"):
+        if key in ("auto_location", "location_strategy", "device_location_enabled", "ip_location_enabled"):
             if self._should_use_device():
                 self._request_device_location()
         self._request_refresh()
@@ -776,10 +783,8 @@ class Plugin(CW2Plugin):
 
     def _should_use_device(self) -> bool:
         try:
-            return bool(self.config.auto_location) and str(self.config.location_strategy) in (
-                "auto",
-                "device",
-            )
+            return bool(self.config.auto_location) and bool(
+                getattr(self.config, "device_location_enabled", True))
         except Exception:
             return False
 

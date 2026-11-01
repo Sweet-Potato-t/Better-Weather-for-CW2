@@ -19,7 +19,9 @@ from cwweather.mappings import (
 )
 from cwweather.models import Alert, DailyForecast, HourlyForecast, Location, WeatherSnapshot, normalize_alerts
 from cwweather.providers.caiyun import CaiyunProvider
+from cwweather.providers.amap import AmapProvider
 from cwweather.providers.open_meteo import OpenMeteoProvider
+from cwweather.providers.tencent import TencentProvider
 from cwweather.providers.openweathermap import OpenWeatherMapProvider
 from cwweather.providers.weatherapi import WeatherApiProvider
 from cwweather.providers.qweather import QWeatherProvider
@@ -249,21 +251,29 @@ class ApiRequestTests(unittest.TestCase):
 
         def fake_get(url, params=None, *, headers=None, config=None):
             calls.append((url, params or {}, headers or {}))
-            if url.endswith("/v7/weather/now"):
-                return {"code": "200", "now": {
-                    "temp": "15", "icon": "101", "text": "晴",
-                    "obsTime": "2026-10-23T18:00+08:00", "windScale": "2",
-                    "windSpeed": "3", "humidity": "40",
-                }}
-            if url.endswith("/v7/weather/3d"):
-                return {"code": "200", "daily": [{
-                    "fxDate": "2026-10-23", "tempMax": "20", "tempMin": "10",
-                    "iconDay": "101", "textDay": "晴", "sunrise": "07:00", "sunset": "18:00",
+            if "/weather/v1/current/" in url:
+                return {
+                    "condition": {"text": "晴", "code": "101"},
+                    "temperature": {"value": 15, "unit": "°C"},
+                    "feelsLike": {"value": 14},
+                    "humidity": 0.4,
+                    "wind": {"direction": {"compass": "n"}, "speed": {"value": 3}, "scale": 2},
+                    "pressure": {"value": 1012},
+                    "visibility": {"value": 12000},
+                }
+            if "/weather/v1/daily/" in url:
+                return {"days": [{
+                    "forecastStartTime": "2026-10-23T00:00+08:00",
+                    "temperatureMax": {"value": 20}, "temperatureMin": {"value": 10},
+                    "daytime": {"condition": {"code": "101", "text": "晴"}},
+                    "astro": {"sunrise": "07:00", "sunset": "18:00"},
                 }]}
-            if url.endswith("/v7/weather/24h"):
-                return {"code": "200", "hourly": [{
-                    "fxTime": "2026-10-23T19:00+08:00", "temp": "14", "icon": "101",
-                    "text": "晴", "pop": "10",
+            if "/weather/v1/hourly/" in url:
+                return {"hours": [{
+                    "forecastTime": "2026-10-23T19:00+08:00",
+                    "temperature": {"value": 14},
+                    "condition": {"code": "101", "text": "晴"},
+                    "precipitation": {"probability": 0.1},
                 }]}
             if "/weatheralert/v1/current/" in url:
                 return {"alerts": [{
@@ -286,6 +296,8 @@ class ApiRequestTests(unittest.TestCase):
             "qweather_api_key": "test-key", "qweather_host": "abcxyz.qweatherapi.com",
         })
         self.assertEqual(snapshot.current_temp_c, 15)
+        self.assertEqual(snapshot.daily[0].high_c, 20)
+        self.assertEqual(snapshot.hourly[0].temp_c, 14)
         self.assertTrue(calls[0][0].startswith("https://abcxyz.qweatherapi.com/"))
         self.assertEqual(calls[0][2].get("X-QW-Api-Key"), "test-key")
         self.assertNotIn("key", calls[0][1])
@@ -391,3 +403,34 @@ class SecretStorageTests(unittest.TestCase):
 
     def test_legacy_plaintext_is_still_readable(self):
         self.assertEqual(secrets.unprotect("legacy-key"), "legacy-key")
+
+
+class NewProviderRequestTests(unittest.TestCase):
+    def test_amap_adcode_and_forecast(self):
+        calls = []
+        def fake_get(url, params=None, *, headers=None, config=None):
+            calls.append((url, params or {}))
+            if url.endswith("/geocode/regeo"):
+                return {"status": "1", "regeocode": {"addressComponent": {"adcode": "110101"}}}
+            if params.get("extensions") == "base":
+                return {"status": "1", "lives": [{"province": "北京", "city": "东城区", "weather": "晴", "temperature": "20", "humidity": "40", "winddirection": "北风", "windpower": "2"}]}
+            return {"status": "1", "forecasts": [{"casts": [{"date": "2026-10-31", "dayweather": "晴", "nightweather": "多云", "daytemp": "22", "nighttemp": "11"}]}]}
+        provider = AmapProvider(); provider._get_json = fake_get
+        snapshot = provider.fetch(Location(39.9, 116.4, name="北京"), {"amap_api_key": "amap-key"})
+        self.assertEqual(snapshot.current_temp_c, 20)
+        self.assertEqual(snapshot.daily[0].high_c, 22)
+        self.assertEqual(calls[0][1].get("key"), "amap-key")
+
+    def test_tencent_now_future_hours(self):
+        def fake_get(url, params=None, *, headers=None, config=None):
+            kind = (params or {}).get("type")
+            if kind == "now":
+                return {"status": 0, "message": "Success", "result": {"realtime": [{"update_time": "2026-10-31 18:00", "infos": {"weather": "晴", "temperature": 20, "humidity": 40}, "alarms": []}]}}
+            if kind == "future":
+                return {"status": 0, "result": {"forecast": [{"infos": [{"date": "2026-10-31", "day": {"weather": "晴", "temperature": 22}, "night": {"weather": "多云", "temperature": 11}}]}]}}
+            return {"status": 0, "result": {"forecast_hours": [{"infos": [{"hour": "2026-10-31 19:00", "info": {"weather": "晴", "temperature": 19}}]}]}}
+        provider = TencentProvider(); provider._get_json = fake_get
+        snapshot = provider.fetch(Location(39.9, 116.4), {"tencent_api_key": "tx-key"})
+        self.assertEqual(snapshot.current_temp_c, 20)
+        self.assertEqual(snapshot.daily[0].high_c, 22)
+        self.assertEqual(snapshot.hourly[0].temp_c, 19)
