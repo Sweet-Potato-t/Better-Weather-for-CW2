@@ -1,16 +1,22 @@
-# Better Weather for CW2
+<div align="center">
+<img src="icon.png" width="192px">
+<h1>更好的天气（Better Weather for cw2)</h1>
 
-**Better Weather for CW2** 是一个面向 **Class Widgets 2** 的多数据源天气小组件。它使用
-[Class Widgets 2 SDK](https://github.com/class-widgets/class-widgets-sdk) 编写，
-项目结构参考了 [插件模板 V2](https://github.com/Class-Widgets/plugin-template-v2)。
+**更好的天气（Better Weather for CW2）** 是一个面向 **Class Widgets 2** 的多数据源天气小组件。它支持和风天气、小米天气、Open-Meteo、wttr.in、MET Norway、OpenWeatherMap、WeatherAPI、彩云天气、腾讯天气、高德天气、中央气象台（NMC），可自动定位或手动选择城市，并在小组件中轮播当前天气、明日天气、未来 3 小时、降水提醒和天气预警。小组件支持最高/最低温显示、点击刷新和淡入淡出过渡。
 
 此插件使用Deepseek V4.1 Flash编写，由口天一大化石提供独家Token支持
+
+![星标](https://img.shields.io/github/stars/sweet-potato-t/Better-Weather-for-cw2?style=for-the-badge&color=orange&label=%E6%98%9F%E6%A0%87)
+![开源许可](https://img.shields.io/badge/license-MIT-blue.svg?label=%E5%BC%80%E6%BA%90%E8%AE%B8%E5%8F%AF%E8%AF%81&style=for-the-badge)
+![下载量](https://img.shields.io/github/downloads/sweet-potato-t/Better-Weather-for-cw2/total.svg?label=%E4%B8%8B%E8%BD%BD%E9%87%8F&color=green&style=for-the-badge)
+
+</div>
 
 ## 功能
 
 - **多天气源**：和风天气、小米天气、Open-Meteo、wttr.in、MET Norway、
-  OpenWeatherMap、WeatherAPI、彩云天气。
-- **免 Key 数据源**：Open-Meteo、小米天气、wttr.in、MET Norway 无需 API Key
+  OpenWeatherMap、WeatherAPI、彩云天气、高德天气、腾讯天气、中央气象台（NMC）
+- **免 Key 数据源**：Open-Meteo、小米天气、wttr.in、MET Norway、中央气象台（NMC） 无需 API Key
   即可直接使用。
 - **小组件主屏**：天气图标、当前温度、天气现象、当日最高/最低温度。
 - **多屏幕轮播**：当前温度 → 明日天气（到设定时间后）→ 未来 3 小时（如开启）→ 降水提醒（如开启且有）→ 天气预警（如有）按顺序轮播。
@@ -20,14 +26,10 @@
 - **小组件设置集中管理**：显示模式、小时预报、降水提醒、轮播和主屏停留时长统一放在插件设置页。
 - **点击刷新**：点击小组件立即刷新天气。
 - **图标区分**：晴、多云、阴等天气图标已增强对比度；预警按道路结冰、沙尘暴、大风、冰雹、寒潮、霜冻等分别使用独立图标。
-- **运行日志**：插件加载、刷新、设置变更、数据源失败和天气预警数量会写入 CW2 运行日志。
 - **API Key 加密保存**：Windows DPAPI 加密后写入配置，设置页不回显明文；输入新 Key 才会替换。
 - **精简位置名**：小组件只显示市/县/乡/镇中最小的一级；完整位置仍保留在天气数据的 `display_name` 中。
-- **显示设置全局生效**：显示位置和显示天气源会应用到主屏、小时、降水和预警所有屏幕。
-- **统一字号**：主屏、未来 3 小时、降水提醒和预警屏幕共用同一套标题、正文和图标尺寸。
-- **官方视觉**：沿用 Class Widgets 2 的 Widget 主题背景、边框、圆角和 100px 高度；宽度由内容自适应，不再固定为 300px。
 - **天气预警**：预警作为独立屏幕加入轮播，逐条显示预警图标、级别和简要信息；
-  多条预警仍按预警轮播间隔逐条循环，一次只显示一条。淡入淡出动画可以关闭，默认开启。
+  多条预警仍按预警轮播间隔逐条循环，一次只显示一条。
 - **停留时间可调**：主屏/小时/降水默认 8 秒，预警默认 3 秒。
 - **刷新间隔可调**：以分钟为单位，默认 15 分钟。
 - **自动定位**：支持设备定位（Qt Positioning）与公网 IP 定位，设备定位失败
@@ -38,9 +40,8 @@
   详情对话框。
 - **故障转移**：当前数据源失败时，可以自动尝试其他可用数据源，避免小组件
   空白。
-- **无第三方运行时依赖**：网络请求使用 Python 标准库 `urllib`，不需要安装
-  `requests`、`aiohttp` 等包。
-  
+
+
 ![设置页预览](docs/preview-settings.png)
 
 ![天气主屏](docs/preview-widget.png) 
@@ -84,19 +85,9 @@ DPAPI 密钥绑定当前 Windows 用户；把配置复制到其他用户或电�
 OpenWeatherMap 和 WeatherAPI 提供；彩云天气的逐小时接口当前尚未接入，因此不会
 出现“未来 3 小时”屏幕。没有逐小时数据时，小组件自动只显示主屏。
 
-### 关于小米天气
 
-小米天气接口是 MIUI/HyperOS 天气客户端使用的非官方接口。插件会先通过
-`wtr-v3/location/city/geo` 把经纬度解析为 `weathercn:<城市代码>`，再请求
-`wtr-v3/weather/all`。该接口可能随时变化或停止服务，因此插件把它当作可失败
-的数据源，并默认启用故障转移。它只支持中国大陆坐标。
 
-### 关于和风天气
 
-在 [dev.qweather.com](https://dev.qweather.com/) 创建项目并获取 API Key 或 JWT。
-同时在控制台设置页复制你的**专属 API Host**（例如 `abcxyz.qweatherapi.com`）。
-`devapi.qweather.com`、`api.qweather.com` 等公共域名已逐步停用，插件不再默认
-使用它们。插件使用经纬度查询，因此不要求填写城市 ID。
 
 > 和风天气已迁移到 v1 实时、每日预报和小时预报接口；天气预警使用
 > `/weatheralert/v1/current/{lat}/{lon}`，分钟降水使用 `/v7/minutely/5m`。
@@ -203,20 +194,16 @@ com.sweetpotato.weather/
 
 ## 已知限制
 
-- 小米天气、wttr.in、MET Norway 的接口/服务由第三方提供，可能限流或变更。
+- 小米天气、wttr.in、MET Norway、中央气象台（NMC）的接口/服务由第三方提供，可能限流或变更。
 - 预警能力因数据源而异；备用数据源可能没有预警。
 - 公网 IP 定位通常只能定位到城市级，精度不如设备定位。
 - 设备定位需要操作系统授权；部分系统/打包环境可能没有 Qt Positioning 插件。
-- 图标为插件自带 PNG，因此不依赖主题图标库中是否存在特定天气图标。
 
 ## 致谢
 
 - [Class Widgets SDK](https://github.com/class-widgets/class-widgets-sdk) 与
   [插件模板 V2](https://github.com/Class-Widgets/plugin-template-v2)
-- [Open-Meteo](https://open-meteo.com/)、[MET Norway](https://www.met.no/)、
-  [wttr.in](https://wttr.in/)、[和风天气](https://www.qweather.com/)、
-  [OpenWeatherMap](https://openweathermap.org/)、
-  [WeatherAPI](https://www.weatherapi.com/)、[彩云天气](https://www.caiyunapp.com/)
+
 
 ## 许可证
 
