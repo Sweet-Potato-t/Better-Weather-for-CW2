@@ -265,6 +265,26 @@ class WeatherSnapshot:
 
         details = self._detail_items(unit, current, high, low)
 
+        precipitation = dict(self.precipitation or {})
+        if not precipitation and self.hourly:
+            for index, hour in enumerate(self.hourly[:4]):
+                pop = hour.pop or 0
+                if pop < 40:
+                    continue
+                hours = max(1, index)
+                snowing = "snow" in str(hour.icon or "")
+                precipitation = {
+                    "active": True,
+                    "title": "降水预报",
+                    "value": str(hours),
+                    "unit": "小时后有雪" if snowing else "小时后有雨",
+                    "summary": f"最高降水概率 {pop}%",
+                    "pop": pop,
+                    "hour": short_time(hour.time),
+                    "icon": "snow" if snowing else "rain_light",
+                }
+                break
+
         return {
             "ok": True,
             "available": True,
@@ -289,7 +309,7 @@ class WeatherSnapshot:
             "hourly": [item.to_dict(unit) for item in self.hourly[:4] if item.time],
             "alerts": [alert.to_dict() for alert in self.alerts],
             "alert_count": len(self.alerts),
-            "precipitation": dict(self.precipitation or {}),
+            "precipitation": precipitation,
             "unit": unit_symbol(unit),
             "updated_at": self.fetched_at,
             "updated_text": short_time(self.fetched_at),

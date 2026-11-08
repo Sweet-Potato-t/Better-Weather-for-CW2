@@ -7,12 +7,13 @@ signals.  The widget and the settings page both use the same backend object.
 
 from __future__ import annotations
 
+import os
 import re
 import threading
 import time
 from typing import Any, Dict, List, Optional
 
-from PySide6.QtCore import Property, QTimer, Qt, Signal, Slot
+from PySide6.QtCore import Property, QProcess, QTimer, Qt, Signal, Slot
 
 from ClassWidgets.SDK import CW2Plugin, PluginAPI
 
@@ -124,6 +125,7 @@ class Plugin(CW2Plugin):
         self._device_location: Optional[Dict[str, Any]] = None
         self._device_status = "尚未请求设备定位"
         self._position_source = None
+        self._device_process: Optional[QProcess] = None
         self._device_request_id = 0
 
         self._searching = False
@@ -190,6 +192,12 @@ class Plugin(CW2Plugin):
         except Exception:
             pass
         self._position_source = None
+        try:
+            if self._device_process is not None:
+                self._device_process.kill()
+        except Exception:
+            pass
+        self._device_process = None
         self._stop_worker()
         try:
             self.api.ui.unregister_settings_page(
@@ -337,7 +345,8 @@ class Plugin(CW2Plugin):
         if snapshot.alerts:
             slides = []
             for alert in snapshot.alerts:
-                meta_parts = [part for part in (alert.sender, alert_time_text(alert.pub_time)) if part]
+                # Time first: the alert screen's meta width can elide long senders.
+                meta_parts = [part for part in (alert_time_text(alert.pub_time), alert.sender) if part]
                 if alert.type and alert.level:
                     concise_title = f"{alert.type} {alert.level_text}".strip()
                 elif alert.type:
@@ -789,15 +798,33 @@ class Plugin(CW2Plugin):
             return False
 
     def _request_device_location(self) -> None:
+        if self._device_process is not None:
+            try:
+                self._device_process.kill()
+            except Exception:
+                pass
+            self._device_process = None
+        script = self.PATH / "assets" / "windows_location.ps1"
+        if os.name == "nt" and script.is_file():
+            self._device_request_id += 1
+            request_id = self._device_request_id
+            self._device_status = "正在通过 Windows 定位…"
+            self.statusChanged.emit()
+            self._start_windows_location(request_id, script)
+            return
+        self._request_qt_device_location()
+
+    def _request_qt_device_location(self) -> None:
         self._device_request_id += 1
         request_id = self._device_request_id
-        self._device_status = "正在请求设备定位…"
+        self._device_status = "正在通过 Qt 定位…"
         self.statusChanged.emit()
         try:
             from PySide6.QtPositioning import QGeoPositionInfoSource
         except Exception as exc:
-            self._device_status = f"设备定位不可用（{exc.__class__.__name__}），将使用公网 IP"
+            self._device_status = f"Qt 定位不可用（{exc.__class__.__name__}），将使用公网 IP"
             self.statusChanged.emit()
+            self._request_refresh()
             return
         try:
             if self._position_source is not None:
@@ -807,8 +834,9 @@ class Plugin(CW2Plugin):
                     pass
             source = QGeoPositionInfoSource.createDefaultSource(self)
             if source is None:
-                self._device_status = "系统未提供定位源，将使用公网 IP"
+                self._device_status = "系统未提供 Qt 定位源，将使用公网 IP"
                 self.statusChanged.emit()
+                self._request_refresh()
                 return
             self._position_source = source
             source.setUpdateInterval(60000)
@@ -820,24 +848,94 @@ class Plugin(CW2Plugin):
             )
             started = source.requestUpdate(12000)
             if not started:
-                self._device_status = "设备定位请求未能启动，将使用公网 IP"
+                self._device_status = "Qt 定位请求未能启动，将使用公网 IP"
                 self.statusChanged.emit()
+                self._request_refresh()
         except Exception as exc:
-            self._device_status = f"设备定位出错（{exc.__class__.__name__}），将使用公网 IP"
+            self._device_status = f"Qt 定位出错（{exc.__class__.__name__}），将使用公网 IP"
             self.statusChanged.emit()
+            self._request_refresh()
             return
         QTimer.singleShot(12500, lambda: self._on_device_timeout(request_id))
 
-    def _on_device_position(self, request_id: int, info: Any) -> None:
-        if request_id != self._device_request_id:
+    def _start_windows_location(self, request_id: int, script: Any) -> None:
+        program = os.path.join(
+            os.environ.get("SystemRoot", r"C:\Windows"),
+            "System32", "WindowsPowerShell", "v1.0", "powershell.exe",
+        )
+        if not os.path.isfile(program):
+            program = "powershell.exe"
+        process = QProcess(self)
+        self._device_process = process
+        process.finished.connect(
+            lambda code, status: self._on_windows_finished(request_id, process, code, status)
+        )
+        process.errorOccurred.connect(
+            lambda error: self._on_windows_error(request_id, process, error)
+        )
+        process.start(program, [
+            "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+            "-WindowStyle", "Hidden", "-File", str(script),
+        ])
+        QTimer.singleShot(18000, lambda: self._on_windows_timeout(request_id, process))
+
+    @staticmethod
+    def _decode_process_output(data: Any) -> str:
+        raw = bytes(data or b"")
+        for encoding in ("utf-8-sig", "utf-8", "gbk", "utf-16-le"):
+            try:
+                text = raw.decode(encoding)
+            except Exception:
+                continue
+            if text and "\x00" not in text:
+                return text
+        return raw.decode("utf-8", errors="ignore")
+
+    def _on_windows_finished(self, request_id: int, process: QProcess, code: int, status: Any) -> None:
+        if request_id != self._device_request_id or self._device_process is not process:
             return
-        try:
-            coordinate = info.coordinate()
-            if not coordinate.isValid():
+        self._device_process = None
+        output = self._decode_process_output(process.readAllStandardOutput())
+        match = re.search(r"OK\s+(-?[\d.]+)\s+(-?[\d.]+)", output)
+        if match:
+            try:
+                latitude = float(match.group(1))
+                longitude = float(match.group(2))
+            except ValueError:
+                latitude = longitude = None
+            if latitude is not None and longitude is not None and -90 <= latitude <= 90 and -180 <= longitude <= 180:
+                self._complete_device_location(request_id, latitude, longitude)
                 return
-            latitude = float(coordinate.latitude())
-            longitude = float(coordinate.longitude())
+        message = output.strip().splitlines()[-1] if output.strip() else f"退出码 {code}"
+        logger.warning("Windows location failed: %s", message[:180])
+        self._device_status = "Windows 定位不可用，尝试 Qt 定位…"
+        self.statusChanged.emit()
+        self._request_qt_device_location()
+
+    def _on_windows_error(self, request_id: int, process: QProcess, error: Any) -> None:
+        if request_id != self._device_request_id or self._device_process is not process:
+            return
+        self._device_process = None
+        logger.warning("Windows location process error: %s", error)
+        self._device_status = "Windows 定位进程启动失败，尝试 Qt 定位…"
+        self.statusChanged.emit()
+        self._request_qt_device_location()
+
+    def _on_windows_timeout(self, request_id: int, process: QProcess) -> None:
+        if request_id != self._device_request_id or self._device_process is not process:
+            return
+        self._device_process = None
+        try:
+            process.kill()
         except Exception:
+            pass
+        logger.warning("Windows location timed out")
+        self._device_status = "Windows 定位超时，尝试 Qt 定位…"
+        self.statusChanged.emit()
+        self._request_qt_device_location()
+
+    def _complete_device_location(self, request_id: int, latitude: float, longitude: float) -> None:
+        if request_id != self._device_request_id:
             return
         with self._state_lock:
             self._device_location = {
@@ -853,7 +951,26 @@ class Plugin(CW2Plugin):
                 self._position_source.stopUpdates()
         except Exception:
             pass
+        if self._device_process is not None:
+            try:
+                self._device_process.kill()
+            except Exception:
+                pass
+            self._device_process = None
         self._request_refresh()
+
+    def _on_device_position(self, request_id: int, info: Any) -> None:
+        if request_id != self._device_request_id:
+            return
+        try:
+            coordinate = info.coordinate()
+            if not coordinate.isValid():
+                return
+            latitude = float(coordinate.latitude())
+            longitude = float(coordinate.longitude())
+        except Exception:
+            return
+        self._complete_device_location(request_id, latitude, longitude)
 
     def _on_device_error(self, request_id: int, args: Any) -> None:
         if request_id != self._device_request_id:

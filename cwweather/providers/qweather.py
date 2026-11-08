@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, time as dt_time
 from typing import Any, Dict, List
+from zoneinfo import ZoneInfo
 
 from ..mappings import qweather_info
 from ..models import DailyForecast, HourlyForecast, Location, WeatherSnapshot
@@ -60,12 +61,6 @@ class QWeatherProvider(WeatherProvider):
         alerts = self._fetch_alerts(base, location, headers)
         precipitation = self._fetch_precipitation(base, location, headers)
 
-        condition = current_payload.get("condition") or {}
-        icon_code = str(condition.get("code") or "")
-        weather_text = str(condition.get("text") or "")
-        is_day = 6 <= datetime.now().hour < 18
-        icon, text = qweather_info(icon_code, weather_text, is_day)
-
         forecasts: List[DailyForecast] = []
         for index, item in enumerate(days[:4]):
             if not isinstance(item, dict):
@@ -86,6 +81,16 @@ class QWeatherProvider(WeatherProvider):
         first_day = first(forecasts)
         first_raw = first(days) or {}
         astro = first_raw.get("astro") or {}
+        condition = current_payload.get("condition") or {}
+        icon_code = str(condition.get("code") or "")
+        weather_text = str(condition.get("text") or "")
+        is_day = _is_daylight(location, astro)
+        display_code = icon_code
+        if is_day and display_code.startswith("15") and len(display_code) == 3:
+            # QWeather sometimes returns a night-only icon id just before the
+            # API's own sunset boundary; the daily astro data is authoritative.
+            display_code = "10" + display_code[2:]
+        icon, text = qweather_info(display_code, weather_text, is_day)
         wind = current_payload.get("wind") or {}
         wind_dir = wind.get("direction") or {}
         pressure = current_payload.get("pressure") or {}
@@ -212,24 +217,109 @@ class QWeatherProvider(WeatherProvider):
             logger.warning(f"QWeather minutely response code: {payload.get('code') if isinstance(payload, dict) else '?'}")
             return {}
         rows = payload.get("minutely") or []
-        first_wet = None
+        summary = str(payload.get("summary") or "")
+        typed_rows = []
         for row in rows:
             if not isinstance(row, dict):
                 continue
-            if (as_float(row.get("precip")) or 0.0) > 0:
-                first_wet = row
+            typed_rows.append((as_float(row.get("precip")) or 0.0, row))
+        if not typed_rows:
+            return {"active": False, "summary": summary}
+        raining_now = typed_rows[0][0] > 0.0
+        first_wet = next((row for amount, row in typed_rows if amount > 0.0), None)
+        kind = str((first_wet or {}).get("type") or "rain")
+        snowing = kind == "snow"
+        change_minutes = None
+        for index, (amount, _row) in enumerate(typed_rows):
+            if (amount > 0.0) != raining_now:
+                change_minutes = index * 5
                 break
-        if not first_wet:
-            return {"active": False, "summary": str(payload.get("summary") or "")}
-        kind = str(first_wet.get("type") or "rain")
+        if change_minutes is None:
+            if raining_now:
+                return {
+                    "active": True,
+                    "title": "降水预报",
+                    "value": "持续",
+                    "unit": "正在降雪" if snowing else "正在降雨",
+                    "summary": summary,
+                    "type": kind,
+                    "icon": "snow" if snowing else "rain_light",
+                    "probability": 100,
+                }
+            return {"active": False, "summary": summary}
+        if change_minutes > 120:
+            if raining_now:
+                return {
+                    "active": True,
+                    "title": "降水预报",
+                    "value": "持续",
+                    "unit": "正在降雪" if snowing else "正在降雨",
+                    "summary": summary,
+                    "type": kind,
+                    "icon": "snow" if snowing else "rain_light",
+                    "probability": 100,
+                }
+            return {"active": False, "summary": summary}
+        if raining_now:
+            unit = "分钟后雪停" if snowing else "分钟后雨停"
+        else:
+            unit = "分钟后有雪" if snowing else "分钟后有雨"
         return {
             "active": True,
-            "summary": str(payload.get("summary") or ""),
-            "time": short_time(first_wet.get("fxTime")),
+            "title": "降水预报",
+            "value": str(change_minutes),
+            "unit": unit,
+            "minutes": change_minutes,
+            "summary": summary,
+            "time": short_time((first_wet or {}).get("fxTime")),
             "type": kind,
-            "icon": "snow" if kind == "snow" else "rain_light",
+            "icon": "snow" if snowing else "rain_light",
             "probability": 100,
         }
+
+
+def _clock(value: Any) -> dt_time | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    if "T" in text:
+        try:
+            return datetime.fromisoformat(text.replace("Z", "+00:00")).timetz().replace(tzinfo=None)
+        except ValueError:
+            pass
+    for fmt in ("%H:%M", "%H:%M:%S"):
+        try:
+            return datetime.strptime(text, fmt).time()
+        except ValueError:
+            continue
+    return None
+
+
+def _astro_now(location: Location, astro: Dict[str, Any]) -> datetime:
+    sample = str(astro.get("sunrise") or astro.get("sunset") or "").strip()
+    if "T" in sample:
+        try:
+            parsed = datetime.fromisoformat(sample.replace("Z", "+00:00"))
+            if parsed.tzinfo is not None:
+                return datetime.now(parsed.tzinfo)
+        except ValueError:
+            pass
+    try:
+        zone = ZoneInfo(location.timezone or "Asia/Shanghai")
+    except Exception:
+        zone = ZoneInfo("Asia/Shanghai")
+    return datetime.now(zone)
+
+
+def _is_daylight(location: Location, astro: Dict[str, Any]) -> bool:
+    now = _astro_now(location, astro)
+    sunrise = _clock(astro.get("sunrise"))
+    sunset = _clock(astro.get("sunset"))
+    if sunrise is not None and sunset is not None:
+        if sunrise <= sunset:
+            return sunrise <= now.time() < sunset
+        return now.time() >= sunrise or now.time() < sunset
+    return 6 <= now.hour < 19
 
 
 _COMPASS = {

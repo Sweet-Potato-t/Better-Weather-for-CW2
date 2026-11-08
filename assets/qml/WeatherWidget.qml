@@ -19,6 +19,15 @@ CWTheme.Widget {
     readonly property var alerts: backend ? backend.alerts : []
     readonly property var hourly: payload && payload.hourly ? payload.hourly : []
     readonly property var precipitation: payload && payload.precipitation ? payload.precipitation : ({})
+    readonly property var alertSlides: {
+        var result = []
+        var list = backend && backend.slides ? backend.slides : []
+        for (var i = 0; i < list.length; i++) {
+            if (list[i] && list[i].kind === "alert")
+                result.push(list[i])
+        }
+        return result
+    }
     readonly property var activeAlert: {
         var list = alerts || []
         if (list.length === 0)
@@ -27,8 +36,10 @@ CWTheme.Widget {
         return list[index] || ({})
     }
     readonly property var activeSlide: {
-        if (shown.kind === "alert")
-            return activeAlert
+        if (shown.kind === "alert") {
+            var index = Math.max(0, Math.min(Number(shown.index) || 0, alertSlides.length - 1))
+            return alertSlides.length > 0 ? alertSlides[index] : activeAlert
+        }
         if (shown.kind === "precip")
             return precipitation
         if (shown.kind === "hourly" && hourly.length > 0)
@@ -36,6 +47,28 @@ CWTheme.Widget {
         if (shown.kind === "tomorrow")
             return tomorrow
         return current
+    }
+    readonly property bool isDaytimeNow: {
+        var tick = clockTick
+        var rise = today && today.sunrise ? String(today.sunrise) : ""
+        var set = today && today.sunset ? String(today.sunset) : ""
+        var riseMatch = /^(\d{1,2}):(\d{2})$/.exec(rise)
+        var setMatch = /^(\d{1,2}):(\d{2})$/.exec(set)
+        if (!riseMatch || !setMatch)
+            return current.is_day !== false
+        var now = new Date()
+        var minutes = now.getHours() * 60 + now.getMinutes()
+        var start = Number(riseMatch[1]) * 60 + Number(riseMatch[2])
+        var end = Number(setMatch[1]) * 60 + Number(setMatch[2])
+        return start <= end ? (minutes >= start && minutes < end)
+                            : (minutes >= start || minutes < end)
+    }
+    readonly property string mainIcon: {
+        var icon = current && current.icon ? String(current.icon) : "unknown"
+        if (!today || !today.sunrise || !today.sunset)
+            return icon
+        var base = icon.replace(/_day$/, "").replace(/_night$/, "")
+        return base !== icon ? base + (isDaytimeNow ? "_day" : "_night") : icon
     }
     readonly property bool available: backend
         ? (backend.hasWeather === true
@@ -115,7 +148,7 @@ CWTheme.Widget {
             value = "未来 3 小时"
             break
         case "precip":
-            value = "降水提醒"
+            value = root.precipitation.title || "降水预报"
             break
         case "unavailable":
             value = "天气"
@@ -154,6 +187,8 @@ CWTheme.Widget {
             list = [{ kind: "blank" }]
         } else if (!available) {
             list = [{ kind: "unavailable" }]
+        } else if (miniMode) {
+            list = [{ kind: "main" }]
         } else if (carousel) {
             // 轮播开启时，主屏、小时预报、降水和预警都在同一个队列中。
             list.push({ kind: "main" })
@@ -327,6 +362,7 @@ CWTheme.Widget {
     onHourlyChanged: buildScreens()
     onPayloadChanged: buildScreens()
     onBackendChanged: buildScreens()
+    onMiniModeChanged: buildScreens()
     onTomorrowReadyChanged: buildScreens()
     Component.onCompleted: buildScreens()
 
@@ -355,7 +391,7 @@ CWTheme.Widget {
 
             WeatherIcon {
                 box: root.iconSize
-                icon: root.current.icon || "unknown"
+                icon: root.mainIcon
             }
 
             Numeral {
@@ -510,7 +546,11 @@ CWTheme.Widget {
                 spacing: 1
                 Text {
                     Layout.fillWidth: true
-                    text: root.activeSlide.title || root.activeAlert.title || "天气预警"
+                    text: root.activeSlide.title
+                        || (root.activeAlert.type
+                            ? (root.activeAlert.type + " " + (root.activeAlert.level_text || "")).trim()
+                            : root.activeAlert.title)
+                        || "天气预警"
                     color: Theme.isDark() ? "#FFFFFF" : "#17171A"
                     font.pixelSize: root.titlePx
                     font.weight: 650
@@ -520,7 +560,9 @@ CWTheme.Widget {
                 }
                 Text {
                     Layout.fillWidth: true
-                    text: root.activeSlide.meta || ""
+                    text: root.activeSlide.meta
+                        || [root.activeAlert.pub_time_text, root.activeAlert.sender]
+                            .filter(function(item) { return !!item }).join(" · ")
                     color: Theme.isDark() ? "#D6D6DB" : "#4B4B52"
                     font.pixelSize: root.bodyPx
                     elide: Text.ElideRight
@@ -529,46 +571,41 @@ CWTheme.Widget {
             }
         }
 
-        // 降水提醒
+        // 降水预报：参考简洁大字样式，突出“多久后开始/停止”
         RowLayout {
             id: precipRow
             anchors.centerIn: parent
             width: parent.width
-            spacing: 10
+            spacing: 12
             visible: root.shown.kind === "precip"
             opacity: visible ? 1 : 0
 
-            Rectangle {
-                width: root.iconSize
-                height: root.iconSize
-                radius: 9
-                color: "#0A5AD4"
-                WeatherIcon {
-                    anchors.centerIn: parent
-                    box: root.iconSize * 0.72
-                    icon: root.precipitation.icon || "rain_light"
-                }
+            WeatherIcon {
+                box: root.iconSize
+                icon: root.precipitation.icon || "rain_light"
             }
 
-            ColumnLayout {
+            RowLayout {
                 Layout.preferredWidth: root.miniMode ? 92 : 150
-                spacing: 0
-                Text {
-                    Layout.fillWidth: true
-                    text: root.precipitation.summary || "未来 3 小时有降水可能"
-                    color: Theme.isDark() ? "#FFFFFF" : "#17171A"
-                    font.pixelSize: root.titlePx
-                    font.weight: 600
-                    elide: Text.ElideRight
+                spacing: 4
+
+                Numeral {
+                    px: root.miniMode ? 26 : 36
+                    text: root.precipitation.value !== undefined
+                        && root.precipitation.value !== null
+                        ? root.precipitation.value
+                        : (root.precipitation.pop !== undefined
+                            ? root.precipitation.pop : "—")
                 }
+
                 Text {
-                    Layout.fillWidth: true
-                    text: root.precipitation.summary
-                        ? ("分钟级降水预报" + (root.precipitation.hour ? " · " + root.precipitation.hour : ""))
-                        : ("最高降水概率 " + root.precipitation.pop + "%"
-                            + (root.precipitation.hour ? " · " + root.precipitation.hour : ""))
+                    Layout.alignment: Qt.AlignBottom
+                    Layout.bottomMargin: 5
+                    text: root.precipitation.unit
+                        || (root.precipitation.pop !== undefined ? "%" : "")
                     color: Theme.isDark() ? "#D6D6DB" : "#4B4B52"
-                    font.pixelSize: root.bodyPx
+                    font.pixelSize: root.miniMode ? 10 : 12
+                    font.weight: 600
                     elide: Text.ElideRight
                 }
             }
