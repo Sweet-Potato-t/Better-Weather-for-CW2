@@ -3,23 +3,21 @@
 
 # 更好的天气 · Better Weather for CW2
 
-面向 **Class Widgets 2** 的多数据源天气小组件：自动定位、天气轮播、逐小时预报、降水预报和天气预警。
+面向 **Class Widgets 2** 的多数据源天气插件：支持实时天气、自动定位、内容轮播、明日天气、逐小时预报、降水预报和天气预警。
 
 [![Release](https://img.shields.io/github/v/release/Sweet-Potato-t/Better-Weather-for-CW2?style=for-the-badge&color=orange&label=Release)](https://github.com/Sweet-Potato-t/Better-Weather-for-CW2/releases)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg?style=for-the-badge&label=%E5%BC%80%E6%BA%90%E8%AE%B8%E5%8F%AF%E8%AF%81)](LICENSE)
 [![Downloads](https://img.shields.io/github/downloads/Sweet-Potato-t/Better-Weather-for-CW2/total.svg?style=for-the-badge&label=%E4%B8%8B%E8%BD%BD%E9%87%8F&color=green)](https://github.com/Sweet-Potato-t/Better-Weather-for-CW2/releases)
 
-**当前版本：v1.5.1**
-
+> 本项目使用 DeepSeek V4.1 Flash 编写，由口天一大化石提供独家 Token 支持。
 </div>
+
 
 ## 简介
 
 **更好的天气（Better Weather for CW2）** 是一个面向 **Class Widgets 2** 的多数据源天气小组件。它支持和风天气、小米天气、Open-Meteo、wttr.in、MET Norway、OpenWeatherMap、WeatherAPI、彩云天气、腾讯天气、高德天气和中央气象台（NMC），既可以使用设备定位或公网 IP 自动获取位置，也可以手动搜索城市或输入经纬度。
 
 小组件在主屏显示当前天气，并按设置轮播明日天气、未来 3 小时、降水预报和天气预警。迷你模式只显示主屏；隐藏时还可以在 5 秒后自动清空内容并停止轮播。
-
-> 本项目由 Sweet_Potato 使用 DeepSeek V4.1 Flash 编写，由口天一大化石提供独家 Token 支持。
 
 ---
 
@@ -30,16 +28,20 @@
 - **主屏**：天气图标、当前温度、天气现象、当日最高/最低温；可在“实时温度”和“最高/最低温”之间切换。
 - **多屏轮播**：当前天气 → 明日天气（到达设定时段后）→ 未来 3 小时 → 降水预报 → 天气预警。
 - **迷你模式**：只保留当前天气主屏，不生成其他屏幕，也不启动轮播。
-- **昼夜图标**：使用当天日出、日落时间判断昼夜，而不是固定按 18:00 切换；并兼容和风天气的昼/夜图标代码。
+- **昼夜图标**：使用当天日出、日落时间判断昼夜；并兼容和风天气的昼/夜图标代码。
 - **降水预报**：显示“多久后开始/停止”，例如“10 分钟后有雨”“25 分钟后雨停”；支持雨/雪区分。
 - **天气预警**：独立预警屏幕显示预警类型、等级和发布时间，多条预警逐条轮播。
 - **明日天气时段**：可设置每天开始/结束时间，仅在时段内显示明日天气屏幕。
 - **隐藏时空白屏幕**：小组件隐藏 5 秒后清空内容并停止轮播；重新显示时恢复天气和轮播，可在设置中关闭。
 - **点击刷新**：点击小组件立即刷新天气。
-- **自适应定位**：设备定位、Windows 位置服务、Qt Positioning 和公网 IP 多层回退。
+- **自适应定位**：设备定位（Windows 位置服务、Qt Positioning） 和公网 IP 多层回退。
 - **故障转移**：当前数据源失败时，可按设置尝试其他可用数据源。
 
 ![小组件预览](docs/preview-widget.png)
+
+![降水预报](docs/preview-precip.png)
+
+![天气预警](docs/preview-alert.png)
 
 ### 设置页
 
@@ -50,13 +52,9 @@
 - **天气数据源**：选择数据源、填写 API Key、刷新间隔、请求超时、故障转移，以及数据源能力表。
 - **定位**：分别开关设备定位和公网 IP 定位；显示定位状态；可手动搜索城市或输入经纬度。
 - **小组件显示**：主屏模式、明日天气时段、未来 3 小时、降水、轮播、主屏停留时长、切换动画、隐藏时空白屏幕、温度单位等。
-- **关于**：插件版本、GitHub 仓库、致谢和数据源能力说明。
+- **关于**：插件版本、GitHub 仓库、致谢。
 
 ![设置页预览](docs/preview-settings.png)
-
-![降水预报](docs/preview-precip.png)
-
-![天气预警](docs/preview-alert.png)
 
 ---
 
@@ -113,21 +111,19 @@
 
 ## 安装
 
-### 方式一：导入 `.cwplugin`
 
-1. 关闭 Class Widgets 2。
-2. 从 [Releases](https://github.com/Sweet-Potato-t/Better-Weather-for-CW2/releases/latest) 下载最新的 `com.sweetpotato.weather-vX.Y.Z.cwplugin`。
-3. 打开 Class Widgets 2 → 设置 → 插件，导入插件包。
-4. 重启 Class Widgets 2，在插件列表中启用 **Better Weather**。
-5. 在小组件编辑界面添加 **Better Weather** 小组件。
+方式一：
+- 在“插件广场”中安装并启用本插件。
+- 重启 Class Widgets 2。
+- 在小组件编辑界面添加 **Better Weather** 小组件。
 
-最新安装包也可以直接下载：
 
-**[com.sweetpotato.weather.cwplugin](release/com.sweetpotato.weather.cwplugin)**
-
-### 方式二：直接复制目录
-
-把 `com.sweetpotato.weather` 目录放入 Class Widgets 2 的外部插件目录，确保目录内直接包含 `cwplugin.json`、`main.py` 和 `assets/`，然后重启程序。
+方式二：
+- 关闭 Class Widgets 2。
+- 下载最新的 `com.sweetpotato.weather-vX.Y.Z.cwplugin`。
+- 打开 Class Widgets 2 → 设置 → 插件，导入插件包。
+- 重启 Class Widgets 2，在插件列表中启用 **Better Weather**，然后再次重启 Class Widgets 2。
+- 在小组件编辑界面添加 **Better Weather** 小组件。
 
 ---
 
@@ -159,7 +155,6 @@
 - 城市搜索会把搜索词发送到 Open-Meteo Geocoding 或 Nominatim。
 - API Key 只发送给对应天气服务，不会写入日志或发送到其他地址。
 
-没有遥测、广告或后台统计。如不希望发送位置，请关闭自动定位并手动选择城市。
 
 ---
 
