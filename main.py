@@ -44,8 +44,10 @@ _BOOL_FIELDS = {
     "ip_location_enabled",
     "widget_show_hourly",
     "widget_show_precip",
+    "widget_show_summary",
     "widget_carousel",
     "widget_blank_when_hidden",
+    "pause_updates_when_blank",
     "widget_tomorrow_enabled",
 }
 _INT_FIELDS = {"refresh_interval", "cycle_interval", "timeout", "widget_main_seconds"}
@@ -113,6 +115,7 @@ class Plugin(CW2Plugin):
         self._worker: Optional[threading.Thread] = None
         self._next_refresh = 0.0
         self._force_ip_next = False
+        self._updates_paused = False
 
         self._payload: Dict[str, Any] = self._empty_payload("正在获取天气…")
         self._alerts: List[Dict[str, Any]] = []
@@ -232,6 +235,11 @@ class Plugin(CW2Plugin):
             try:
                 with self._state_lock:
                     next_at = self._next_refresh
+                    paused = self._updates_paused
+                if paused:
+                    self._wake_event.wait(timeout=30.0)
+                    self._wake_event.clear()
+                    continue
                 now = time.monotonic()
                 if next_at <= now:
                     self._perform_refresh()
@@ -674,6 +682,22 @@ class Plugin(CW2Plugin):
     # ------------------------------------------------------------------
     # Public QML slots
     # ------------------------------------------------------------------
+
+    @Slot(bool)
+    def setWidgetBlanked(self, value: bool) -> None:
+        """Pause scheduled refreshes while the widget is showing a blank screen."""
+        pause = bool(value) and bool(
+            getattr(self.config, "pause_updates_when_blank", True))
+        with self._state_lock:
+            was_paused = self._updates_paused
+            self._updates_paused = pause
+            if not pause and was_paused:
+                self._next_refresh = time.monotonic()
+        if pause:
+            logger.debug("Weather auto-refresh paused while widget is blank")
+        elif was_paused:
+            logger.debug("Weather auto-refresh resumed")
+        self._wake_event.set()
 
     @Slot()
     def refreshNow(self) -> None:

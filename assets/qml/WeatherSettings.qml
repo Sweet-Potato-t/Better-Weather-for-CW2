@@ -90,6 +90,7 @@ FluentPage {
         animationSwitch.checked = cfg.animation_enabled !== false
         showLocationSwitch.checked = cfg.show_location !== false
         showProviderSwitch.checked = cfg.show_provider === true
+        summarySwitch.checked = cfg.widget_show_summary !== false
         widgetContentCombo.currentIndex = cfg.widget_content_mode === "high_low" ? 1 : 0
         widgetHourlySwitch.checked = cfg.widget_show_hourly !== false
         tomorrowSwitch.checked = cfg.widget_tomorrow_enabled !== false
@@ -100,6 +101,7 @@ FluentPage {
         widgetPrecipSwitch.checked = cfg.widget_show_precip !== false
         widgetCarouselSwitch.checked = cfg.widget_carousel !== false
         blankHiddenSwitch.checked = cfg.widget_blank_when_hidden !== false
+        blankPauseSwitch.checked = cfg.pause_updates_when_blank !== false
         widgetSecondsSpin.value = Number(cfg.widget_main_seconds || 8)
         if (!qweatherKeyField.activeFocus) qweatherKeyField.text = ""
         if (!qweatherHostField.activeFocus) qweatherHostField.text = cfg.qweather_host || ""
@@ -870,6 +872,17 @@ FluentPage {
         description: "统一控制所有 Better Weather 小组件的内容、轮播和预警显示。"
 
         SettingItem {
+            title: "主屏显示摘要图标"
+            description: "在天气图标下方显示预警数量或降水摘要；关闭后只显示天气。"
+
+            Switch {
+                id: summarySwitch
+                onToggled: if (!root.syncing && backend)
+                    backend.setOption("widget_show_summary", checked)
+            }
+        }
+
+        SettingItem {
             title: "主屏显示"
             description: "所有 Better Weather 小组件共用；选择实时温度或当日最高 / 最低温。"
 
@@ -962,6 +975,18 @@ FluentPage {
                 id: blankHiddenSwitch
                 onToggled: if (!root.syncing && backend)
                     backend.setOption("widget_blank_when_hidden", checked)
+            }
+        }
+
+        SettingItem {
+            title: "空白屏幕时暂停自动更新"
+            visible: cfg.widget_blank_when_hidden !== false
+            description: "启用后，小组件处于空白屏幕期间不再定时请求天气；重新显示后恢复更新。"
+
+            Switch {
+                id: blankPauseSwitch
+                onToggled: if (!root.syncing && backend)
+                    backend.setOption("pause_updates_when_blank", checked)
             }
         }
 

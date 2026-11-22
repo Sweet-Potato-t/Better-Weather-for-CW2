@@ -47,9 +47,11 @@ class WeatherConfig(ConfigBaseModel):
     widget_content_mode: str = "current"   # current | high_low
     widget_show_hourly: bool = True
     widget_show_precip: bool = True
+    widget_show_summary: bool = True
     widget_carousel: bool = True
     widget_main_seconds: int = 8
     widget_blank_when_hidden: bool = True
+    pause_updates_when_blank: bool = True
     widget_tomorrow_enabled: bool = True
     widget_tomorrow_start: str = "20:00"
     widget_tomorrow_end: str = "23:59"

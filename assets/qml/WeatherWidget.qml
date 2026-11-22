@@ -7,6 +7,7 @@ import "components"
 
 CWTheme.Widget {
     id: root
+    clip: true
 
     padding: miniMode ? 16 : 24
     readonly property int screenWidth: miniMode ? 132 : 212
@@ -80,6 +81,7 @@ CWTheme.Widget {
     readonly property bool carousel: cfg.widget_carousel !== false
     readonly property bool showHourly: cfg.widget_show_hourly !== false
     readonly property bool showPrecip: cfg.widget_show_precip !== false
+    readonly property bool showSummary: cfg.widget_show_summary !== false
     readonly property bool blankWhenHidden: cfg.widget_blank_when_hidden !== false
     readonly property int mainSeconds: Math.max(
         3, Number(cfg.widget_main_seconds || 8))
@@ -133,9 +135,7 @@ CWTheme.Widget {
         return parts.length > 0 ? " · " + parts.join(" · ") : ""
     }
 
-    text: {
-        if (root.blanked && root.blankWhenHidden)
-            return ""
+    readonly property string baseTitle: {
         var value = ""
         switch (shown.kind) {
         case "alert":
@@ -156,21 +156,67 @@ CWTheme.Widget {
         default:
             value = root.current.text || "天气"
         }
-        value += root.headerSuffix()
-        return value.length > 24 ? value.substring(0, 23) + "…" : value
+        return value + root.headerSuffix()
+    }
+    // The base Subtitle does not elide, so the visible header text is replaced
+    // by a clipped pixel-marquee. This avoids per-character re-layout jitter.
+    readonly property bool titleOverflow: titleText.contentWidth > titleMarqueeBox.width
+    text: "\u200B"
+    Item {
+        id: titleMarqueeBox
+        x: 0
+        y: -28
+        width: Math.max(70, root.width - root.padding * 2 - 30)
+        height: 22
+        clip: true
+        z: 100
+        visible: !root.blanked && !root.miniMode
+
+        Text {
+            id: titleText
+            x: 0
+            text: root.baseTitle
+            color: Theme.isDark() ? "#FFFFFF" : "#17171A"
+            opacity: 0.6
+            font.family: (typeof Configs !== "undefined" && Configs.data.preferences.font)
+                ? Configs.data.preferences.font : "Microsoft YaHei"
+            font.pixelSize: 16
+            font.weight: (typeof Configs !== "undefined"
+                ? (Configs.data.preferences.font_weight || 600) : 600)
+            wrapMode: Text.NoWrap
+        }
+    }
+
+    SequentialAnimation {
+        id: titleSlide
+        running: root.titleOverflow && !root.blanked && !root.miniMode
+        loops: Animation.Infinite
+        NumberAnimation {
+            target: titleText
+            property: "x"
+            from: 0
+            to: -Math.max(0, titleText.contentWidth - titleMarqueeBox.width)
+            duration: Math.max(2500, titleText.contentWidth * 22)
+            easing.type: Easing.Linear
+        }
+        PauseAnimation { duration: 700 }
+        NumberAnimation {
+            target: titleText
+            property: "x"
+            to: 0
+            duration: 350
+            easing.type: Easing.OutCubic
+        }
+        onRunningChanged: if (!running) titleText.x = 0
+    }
+    onBaseTitleChanged: {
+        titleText.x = 0
+        if (titleSlide.running)
+            titleSlide.restart()
     }
 
     actions: RowLayout {
         spacing: 6
-
-        WeatherIcon {
-            box: 18
-            icon: root.alerts.length > 0
-                ? (root.alerts[0].icon || "alert_generic")
-                : (root.precipitation.icon || "rain_light")
-            visible: !root.blanked && root.shown.kind === "main"
-                && (root.alerts.length > 0 || root.precipitation.active)
-        }
 
         Text {
             visible: !root.blanked && root.shown.kind === "alert" && root.alerts.length > 1
@@ -178,6 +224,30 @@ CWTheme.Widget {
             font.pixelSize: root.bodyPx
             opacity: 0.65
             color: Theme.isDark() ? "#FFFFFF" : "#17171A"
+        }
+    }
+
+    function hourlyIcon(item) {
+        var icon = item && item.icon ? String(item.icon) : "unknown"
+        var base = icon.replace(/_day$/, "").replace(/_night$/, "")
+        if (base === icon || !today || !today.sunrise || !today.sunset)
+            return icon
+        var riseMatch = /^(\d{1,2}):(\d{2})$/.exec(String(today.sunrise))
+        var setMatch = /^(\d{1,2}):(\d{2})$/.exec(String(today.sunset))
+        var timeMatch = /(\d{1,2}):(\d{2})/.exec(String((item && (item.time || item.hour)) || ""))
+        if (!riseMatch || !setMatch || !timeMatch)
+            return icon
+        var minutes = Number(timeMatch[1]) * 60 + Number(timeMatch[2])
+        var start = Number(riseMatch[1]) * 60 + Number(riseMatch[2])
+        var end = Number(setMatch[1]) * 60 + Number(setMatch[2])
+        var daytime = start <= end ? (minutes >= start && minutes < end)
+                                   : (minutes >= start || minutes < end)
+        return base + (daytime ? "_day" : "_night")
+    }
+
+    function syncBlankState() {
+        if (backend && backend.setWidgetBlanked) {
+            backend.setWidgetBlanked(root.blanked && root.blankWhenHidden)
         }
     }
 
@@ -339,13 +409,17 @@ CWTheme.Widget {
         }
     }
 
-    onBlankedChanged: buildScreens()
+    onBlankedChanged: {
+        syncBlankState()
+        buildScreens()
+    }
     onBlankWhenHiddenChanged: {
         if (!root.blankWhenHidden) {
             root.blanked = false
         } else if (root.hide) {
             hideTimer.restart()
         }
+        syncBlankState()
     }
 
     Connections {
@@ -354,7 +428,10 @@ CWTheme.Widget {
 
         function onWeatherChanged() { root.buildScreens() }
         function onAlertsChanged() { root.buildScreens() }
-        function onConfigChanged() { root.buildScreens() }
+        function onConfigChanged() {
+            root.syncBlankState()
+            root.buildScreens()
+        }
     }
 
     onAvailableChanged: buildScreens()
@@ -364,7 +441,10 @@ CWTheme.Widget {
     onBackendChanged: buildScreens()
     onMiniModeChanged: buildScreens()
     onTomorrowReadyChanged: buildScreens()
-    Component.onCompleted: buildScreens()
+    Component.onCompleted: {
+        syncBlankState()
+        buildScreens()
+    }
 
     TapHandler {
         acceptedButtons: Qt.LeftButton
@@ -389,9 +469,37 @@ CWTheme.Widget {
             visible: root.shown.kind === "main"
             opacity: visible ? 1 : 0
 
-            WeatherIcon {
-                box: root.iconSize
-                icon: root.mainIcon
+            ColumnLayout {
+                spacing: 1
+
+                WeatherIcon {
+                    box: root.iconSize
+                    icon: root.mainIcon
+                }
+
+                RowLayout {
+                    spacing: 2
+                    visible: root.showSummary && !root.blanked
+                        && (root.alerts.length > 0 || root.precipitation.active)
+                    Layout.alignment: Qt.AlignLeft
+
+                    WeatherIcon {
+                        box: 12
+                        icon: root.alerts.length > 0
+                            ? "alert_summary"
+                            : (root.precipitation.icon || "rain_light")
+                    }
+                    Text {
+                        text: root.alerts.length > 0
+                            ? ("× " + root.alerts.length)
+                            : "降水"
+                        color: root.alerts.length > 0
+                            ? (Theme.isDark() ? "#FFB4AB" : "#B3261E")
+                            : (Theme.isDark() ? "#9CCBFF" : "#0A5AD4")
+                        font.pixelSize: 9
+                        font.weight: 600
+                    }
+                }
             }
 
             Numeral {
@@ -434,6 +542,7 @@ CWTheme.Widget {
                     text: "最低 " + (root.today.low_text || "--°")
                     color: Theme.isDark() ? "#D6D6DB" : "#4B4B52"
                     font.pixelSize: root.bodyPx
+                    font.weight: 600
                 }
             }
         }
@@ -500,7 +609,7 @@ CWTheme.Widget {
                         Layout.alignment: Qt.AlignVCenter
                         WeatherIcon {
                             box: root.iconSize
-                            icon: modelData.icon || "unknown"
+                            icon: root.hourlyIcon(modelData)
                         }
                         ColumnLayout {
                             spacing: 0
