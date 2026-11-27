@@ -82,6 +82,8 @@ CWTheme.Widget {
     readonly property bool showHourly: cfg.widget_show_hourly !== false
     readonly property bool showPrecip: cfg.widget_show_precip !== false
     readonly property bool showSummary: cfg.widget_show_summary !== false
+    readonly property bool summaryVisible: showSummary && shown.kind === "main"
+        && (alerts.length > 0 || precipitation.active)
     readonly property bool blankWhenHidden: cfg.widget_blank_when_hidden !== false
     readonly property int mainSeconds: Math.max(
         3, Number(cfg.widget_main_seconds || 8))
@@ -166,7 +168,7 @@ CWTheme.Widget {
         id: titleMarqueeBox
         x: 0
         y: -28
-        width: Math.max(70, root.width - root.padding * 2 - 30)
+        width: Math.max(70, root.width - root.padding * 2 - (root.summaryVisible ? 64 : 30))
         height: 22
         clip: true
         z: 100
@@ -218,6 +220,32 @@ CWTheme.Widget {
     actions: RowLayout {
         spacing: 6
 
+        RowLayout {
+            spacing: 3
+            visible: !root.blanked && root.summaryVisible
+            Layout.alignment: Qt.AlignVCenter
+
+            WeatherIcon {
+                box: 16
+                icon: root.alerts.length > 0
+                    ? "alert_summary"
+                    : (root.precipitation.icon || "rain_light")
+            }
+
+            Text {
+                text: root.alerts.length > 0
+                    ? ("× " + root.alerts.length)
+                    : "降水"
+                color: root.alerts.length > 0
+                    ? (Theme.isDark() ? "#FFB4AB" : "#E5484D")
+                    : (Theme.isDark() ? "#9CCBFF" : "#0A5AD4")
+                font.pixelSize: root.bodyPx
+                font.weight: 600
+                verticalAlignment: Text.AlignVCenter
+                Layout.alignment: Qt.AlignVCenter
+            }
+        }
+
         Text {
             visible: !root.blanked && root.shown.kind === "alert" && root.alerts.length > 1
             text: (root.shown.index + 1) + "/" + root.alerts.length
@@ -229,6 +257,8 @@ CWTheme.Widget {
 
     function hourlyIcon(item) {
         var icon = item && item.icon ? String(item.icon) : "unknown"
+        if (!icon || icon === "unknown")
+            icon = root.mainIcon
         var base = icon.replace(/_day$/, "").replace(/_night$/, "")
         if (base === icon || !today || !today.sunrise || !today.sunset)
             return icon
@@ -469,37 +499,9 @@ CWTheme.Widget {
             visible: root.shown.kind === "main"
             opacity: visible ? 1 : 0
 
-            ColumnLayout {
-                spacing: 1
-
-                WeatherIcon {
-                    box: root.iconSize
-                    icon: root.mainIcon
-                }
-
-                RowLayout {
-                    spacing: 2
-                    visible: root.showSummary && !root.blanked
-                        && (root.alerts.length > 0 || root.precipitation.active)
-                    Layout.alignment: Qt.AlignLeft
-
-                    WeatherIcon {
-                        box: 12
-                        icon: root.alerts.length > 0
-                            ? "alert_summary"
-                            : (root.precipitation.icon || "rain_light")
-                    }
-                    Text {
-                        text: root.alerts.length > 0
-                            ? ("× " + root.alerts.length)
-                            : "降水"
-                        color: root.alerts.length > 0
-                            ? (Theme.isDark() ? "#FFB4AB" : "#B3261E")
-                            : (Theme.isDark() ? "#9CCBFF" : "#0A5AD4")
-                        font.pixelSize: 9
-                        font.weight: 600
-                    }
-                }
+            WeatherIcon {
+                box: root.iconSize
+                icon: root.mainIcon
             }
 
             Numeral {
@@ -520,7 +522,6 @@ CWTheme.Widget {
                 Numeral {
                     px: root.titlePx
                     color: Theme.isDark() ? "#FFFFFF" : "#17171A"
-                    opacity: 0.62
                     text: "↓ " + (root.today.low_text || "--°")
                 }
             }
@@ -540,7 +541,7 @@ CWTheme.Widget {
                 Text {
                     Layout.alignment: Qt.AlignRight
                     text: "最低 " + (root.today.low_text || "--°")
-                    color: Theme.isDark() ? "#D6D6DB" : "#4B4B52"
+                    color: Theme.isDark() ? "#FFFFFF" : "#17171A"
                     font.pixelSize: root.bodyPx
                     font.weight: 600
                 }

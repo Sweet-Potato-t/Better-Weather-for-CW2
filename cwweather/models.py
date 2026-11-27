@@ -285,6 +285,17 @@ class WeatherSnapshot:
                 }
                 break
 
+        hourly_payload = []
+        for item in self.hourly[:4]:
+            if not item.time:
+                continue
+            entry = item.to_dict(unit)
+            if not entry.get("text") or entry.get("text") == "未知天气":
+                entry["text"] = weather_text or entry.get("text") or ""
+            if not entry.get("icon") or entry.get("icon") == "unknown":
+                entry["icon"] = self.icon or (today_entry or {}).get("icon") or "unknown"
+            hourly_payload.append(entry)
+
         return {
             "ok": True,
             "available": True,
@@ -306,7 +317,7 @@ class WeatherSnapshot:
                 "sunset": short_time(self.sunset),
             },
             "daily": daily_payload,
-            "hourly": [item.to_dict(unit) for item in self.hourly[:4] if item.time],
+            "hourly": hourly_payload,
             "alerts": [alert.to_dict() for alert in self.alerts],
             "alert_count": len(self.alerts),
             "precipitation": precipitation,
